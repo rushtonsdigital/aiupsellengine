@@ -171,34 +171,57 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
                                    x["customer_code"]))
     top = candidates[:config.TOP_N]
 
-    conn.execute(db.recommendations.delete()
-                 .where(db.recommendations.c.run_date == as_of))
+    # Re-running select_top for a run_date that already has locked recommendations
+    # must not disturb rows that comms already reference (FK) or reset a status a
+    # human has already progressed (approved/sent/converted). So: update existing
+    # (run_date, customer_code) rows in place (same id, same status); only insert
+    # rows that are genuinely new; only delete stale rows with no comms attached.
+    new_codes = {cand["customer_code"] for cand in top}
+    existing_ids = {r.customer_code: r.id for r in conn.execute(
+        sa.select(db.recommendations.c.id, db.recommendations.c.customer_code)
+        .where(db.recommendations.c.run_date == as_of))}
+    stale_codes = set(existing_ids) - new_codes
+    if stale_codes:
+        stale_ids = [existing_ids[c] for c in stale_codes]
+        referenced = {r.recommendation_id for r in conn.execute(
+            sa.select(db.comms.c.recommendation_id)
+            .where(db.comms.c.recommendation_id.in_(stale_ids)))}
+        removable = [rid for rid in stale_ids if rid not in referenced]
+        if removable:
+            conn.execute(db.recommendations.delete()
+                         .where(db.recommendations.c.id.in_(removable)))
+        kept = [c for c in stale_codes if existing_ids[c] in referenced]
+        if kept:
+            log.warning("keeping %d stale recommendation(s) for %s still "
+                        "referenced by comms: %s", len(kept), as_of, kept)
+
     results = []
     for rank, cand in enumerate(top, start=1):
         c, s = cand["customer"], cand["stats"]
+        code = cand["customer_code"]
         suggestions = {
-            gap: suggest_products(conn, gap, as_of, skus.get(cand["customer_code"], set()))
+            gap: suggest_products(conn, gap, as_of, skus.get(code, set()))
             for gap in cand["focused"]
         }
         rationale = (
             f"{c.venue_type}; {c.activity_status}; {s['num_orders']} orders "
             f"({s['num_orders'] / span_weeks:.1f}/wk), "
-            f"{len(skus.get(cand['customer_code'], ()))} SKUs across "
-            f"{len(cats.get(cand['customer_code'], ()))} categories; "
+            f"{len(skus.get(code, ()))} SKUs across "
+            f"{len(cats.get(code, ()))} categories; "
             f"missing {len(cand['gaps'])}/{len(config.TARGETABLE_CATEGORIES)} "
             f"targetable categories. Pitch: {', '.join(cand['focused'])}."
         )
-        rec_id = conn.execute(db.recommendations.insert().values(
-            run_date=as_of,
-            customer_code=cand["customer_code"],
-            rank=rank,
-            score=cand["score"],
-            gap_categories=cand["focused"],
-            suggested_products=suggestions,
-            rationale=rationale,
-            status="proposed",
-            created_at=db.now_utc(),
-        )).inserted_primary_key[0]
+        values = dict(run_date=as_of, customer_code=code, rank=rank,
+                     score=cand["score"], gap_categories=cand["focused"],
+                     suggested_products=suggestions, rationale=rationale)
+        if code in existing_ids and code not in stale_codes:
+            rec_id = existing_ids[code]
+            conn.execute(db.recommendations.update()
+                         .where(db.recommendations.c.id == rec_id).values(**values))
+        else:
+            rec_id = conn.execute(db.recommendations.insert().values(
+                **values, status="proposed", created_at=db.now_utc(),
+            )).inserted_primary_key[0]
         results.append({
             "recommendation_id": rec_id, "rank": rank,
             "customer_code": cand["customer_code"],

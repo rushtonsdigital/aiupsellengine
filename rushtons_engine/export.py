@@ -7,6 +7,8 @@ CS team fills in by hand (contact, approved, sent, outcome).
 
 import logging
 import re
+import time
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -25,9 +27,47 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 SUMMARY_COLS = [
     "Rank", "Customer Code", "Customer Name", "Venue Type", "Account Manager",
     "Size Band", "Orders (month)", "SKUs", "Categories Bought",
-    "Gap Categories to Pitch", "Score", "Contact (phone)", "Approved (Y/N)",
-    "Sent Date", "Box Sent (Y/N)", "Outcome", "Notes",
+    "Gap Categories to Pitch", "Score",
+    "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
+    "Contact (phone)", "Approved (Y/N)", "Sent Date", "Box Sent (Y/N)",
+    "Outcome", "Notes",
 ]
+SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 8, 45, 45, 45,
+                     16, 12, 12, 12, 18, 30]
+WHATSAPP_COL_LABELS = ("WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box")
+
+
+def _wrapped_row_height(texts: list[str], chars_per_line: int = 45,
+                        pt_per_line: int = 15, min_pt: int = 15) -> int:
+    """Estimate row height for wrapped text in a single-line-per-message cell."""
+    lines = max((len(t) + chars_per_line - 1) // chars_per_line for t in texts) if texts else 1
+    return max(min_pt, pt_per_line * max(lines, 1))
+
+
+def _save_with_fallback(wb: Workbook, path: Path,
+                        max_retries: int = 3, retry_delay: float = 1.5) -> Path:
+    """Save the workbook, retrying briefly for a transient lock (e.g. a
+    background sync client scanning the file — common once this folder is
+    synced to SharePoint/OneDrive). If it's still locked after that — most
+    likely a human has it open in Excel — write to a clearly-named fallback
+    path instead of crashing the whole weekly run. Either way, the database
+    is already the authoritative record by the time this runs; the tracker
+    is just the human-facing export."""
+    for attempt in range(max_retries):
+        try:
+            wb.save(path)
+            return path
+        except PermissionError:
+            if attempt < max_retries - 1:
+                log.warning("tracker file locked, retrying (%d/%d): %s",
+                            attempt + 1, max_retries, path)
+                time.sleep(retry_delay)
+    fallback = path.with_stem(f"{path.stem}_UPDATED_{datetime.now():%H%M}")
+    wb.save(fallback)
+    log.error("%s is locked (likely open in Excel) - wrote %s instead. Close "
+             "the original and replace it with this one, or just keep "
+             "working from the new file.", path, fallback)
+    return fallback
 
 
 def _safe_tab_name(name: str, used: set) -> str:
@@ -58,18 +98,28 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
     ws.cell(row=1, column=1, value=f"Rushton's Upsell Engine — week of {run_date}").font = Font(bold=True, size=14)
     _header_row(ws, 3, SUMMARY_COLS)
     for i, rec in enumerate(recommendations, start=4):
-        ws.cell(row=i, column=1, value=rec["rank"])
-        ws.cell(row=i, column=2, value=rec["customer_code"])
-        ws.cell(row=i, column=3, value=rec["customer_name"])
-        ws.cell(row=i, column=4, value=rec["venue_type"])
-        ws.cell(row=i, column=5, value=rec["sales_rep"])
-        ws.cell(row=i, column=6, value=rec["size_band"])
-        ws.cell(row=i, column=7, value=rec["num_orders"])
-        ws.cell(row=i, column=8, value=rec["num_skus"])
-        ws.cell(row=i, column=9, value=", ".join(rec["bought_categories"]))
-        ws.cell(row=i, column=10, value=", ".join(rec["gap_categories"]))
-        ws.cell(row=i, column=11, value=float(rec["score"]))
-    for col, width in enumerate([6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 8, 16, 12, 12, 12, 18, 30], start=1):
+        drafts = rec.get("drafts", {})
+        messages = {"WhatsApp - Announcement": drafts.get("announcement", ""),
+                   "WhatsApp - Follow-up": drafts.get("followup", ""),
+                   "WhatsApp - Post-box": drafts.get("postbox", "")}
+        row_values = {
+            "Rank": rec["rank"], "Customer Code": rec["customer_code"],
+            "Customer Name": rec["customer_name"], "Venue Type": rec["venue_type"],
+            "Account Manager": rec["sales_rep"], "Size Band": rec["size_band"],
+            "Orders (month)": rec["num_orders"], "SKUs": rec["num_skus"],
+            "Categories Bought": ", ".join(rec["bought_categories"]),
+            "Gap Categories to Pitch": ", ".join(rec["gap_categories"]),
+            "Score": float(rec["score"]),
+            **messages,
+            "Contact (phone)": "", "Approved (Y/N)": "", "Sent Date": "",
+            "Box Sent (Y/N)": "", "Outcome": "", "Notes": "",
+        }
+        for col, label in enumerate(SUMMARY_COLS, start=1):
+            cell = ws.cell(row=i, column=col, value=row_values[label])
+            if label in WHATSAPP_COL_LABELS:
+                cell.alignment = WRAP
+        ws.row_dimensions[i].height = _wrapped_row_height(list(messages.values()))
+    for col, width in enumerate(SUMMARY_COL_WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(col)].width = width
     ws.freeze_panes = "A4"
 
@@ -123,6 +173,6 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
                       "Box sent (Y/N)", "Outcome", "Notes"):
             put(label, "")
 
-    wb.save(path)
+    path = _save_with_fallback(wb, path)
     log.info("tracker written: %s (%d account tabs)", path, len(recommendations))
     return path

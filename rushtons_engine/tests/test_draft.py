@@ -32,8 +32,8 @@ def test_brief_roundtrip_and_apply(conn, tmp_path):
     recs = [_rec("C ONE")]
     brief_path = draft.export_brief(recs, "2026-06-30", out_dir=tmp_path)
     brief = json.loads(brief_path.read_text(encoding="utf-8"))
-    assert brief["accounts"][0]["sign_off"] == "Ben"
-    assert "tone_rules" in brief
+    assert brief["accounts"][0]["account_manager"] == "Ben (Rushtons)"
+    assert "rushtons-comms" in brief["instructions"]
 
     drafts = _write_drafts(tmp_path, {"C ONE": GOOD})
     assert draft.apply_drafts(conn, drafts, recs) == 3

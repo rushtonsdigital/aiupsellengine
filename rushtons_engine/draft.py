@@ -1,9 +1,16 @@
 """Comms drafting bridge — Claude Code writes, this module moves the data.
 
 Phase 1 drafting runs inside Claude Code (no API key, no SDK): the engine
-exports a *drafting brief* (selection context + tone rules per account), the
-Claude Code session writes the three WhatsApp messages per account into a
-drafts JSON, and this module validates and applies them to the comms table.
+exports a *drafting brief* (selection context per account), the Claude Code
+session loads the `rushtons-comms` skill for tone/voice/examples/feedback and
+writes the three WhatsApp messages per account into a drafts JSON, and this
+module validates and applies them to the comms table.
+
+Tone, voice, real examples and accumulated client feedback live in
+`.claude/skills/rushtons-comms/` (SKILL.md + examples.md + feedback-log.md) —
+not here. That's a deliberate separation: tone guidance changes based on
+client feedback and should be editable as plain markdown, without touching
+this file. See rushtons-tone-guidelines-source in project memory for why.
 
 "Code picks, AI writes" still holds: the brief is generated AFTER the ten are
 locked, and apply_drafts refuses drafts for accounts outside the selection —
@@ -21,42 +28,6 @@ log = logging.getLogger(__name__)
 
 STAGES = ("announcement", "followup", "postbox")
 
-# Tone rules from "Rushton's AI Upsell Engine Meeting Notes & Plan July 26".
-# Embedded in every brief so the drafting session needs no other context.
-TONE_RULES = """\
-You draft WhatsApp messages for Rushton's Greengrocers, a London wholesale
-fresh-produce supplier, to existing trade customers (chefs, owners, bar
-managers). Write as the named account manager (sign_off field).
-
-Rules (agreed with the client, non-negotiable):
-- Warm and expert: the voice of a knowledgeable account manager, never a
-  marketing email.
-- Short and specific: WhatsApp-length. Reference the customer by name and
-  their actual ordering behaviour.
-- Seasonal and produce-led: lead with the specific products and what's good
-  about them right now.
-- Never generic: never write "we noticed you don't order dairy". Pitch the
-  specific product instead ("we've just taken on a brilliant burrata that
-  would work beautifully alongside your tomatoes").
-- Flag the category gap naturally through the products, not as data.
-- Offer a free sample box themed around the gap, no strings attached.
-- Sign off with the account manager's first name only.
-- No emojis unless natural, no exclamation-mark pileups, no corporate speak.
-
-Three messages per account:
-1. announcement — "been meaning to mention something..." opener; reference
-   what they currently order; lead with 2-3 specific seasonal products from
-   the gap; offer the sample box.
-2. followup — short nudge a few days later if no reply; one or two lines;
-   acknowledge no rush; keep it human.
-3. postbox — sent the day the sample box lands: hope it arrived safely, how
-   did they find it; soft invite to add items to the next order.
-"""
-
-
-def _first_name(sales_rep: str | None) -> str:
-    return (sales_rep or "the Rushton's team").split(" ")[0]
-
 
 def export_brief(recommendations: list[dict], run_date, out_dir: Path | None = None) -> Path:
     """Write the drafting brief for the Claude Code session."""
@@ -66,19 +37,21 @@ def export_brief(recommendations: list[dict], run_date, out_dir: Path | None = N
     brief = {
         "run_date": str(run_date),
         "instructions": (
-            "Write three WhatsApp messages (announcement, followup, postbox) "
-            f"for each account below, following tone_rules. Save them to "
-            f"drafts_{run_date}.json in this folder as "
+            "Before drafting, load the rushtons-comms skill "
+            "(.claude/skills/rushtons-comms/SKILL.md) for tone, voice, real "
+            "examples, and the latest client feedback — do not draft from "
+            "memory of past tone rules. Write three WhatsApp messages "
+            "(announcement, followup, postbox) for each account below. Save "
+            f"them to drafts_{run_date}.json in this folder as "
             '{"<customer_code>": {"announcement": "...", "followup": "...", '
             '"postbox": "..."}, ...} covering every account exactly once. '
             "Do not add, drop or reorder accounts."
         ),
-        "tone_rules": TONE_RULES,
         "accounts": [{
             "customer_code": r["customer_code"],
             "customer_name": r["customer_name"],
             "venue_type": r["venue_type"],
-            "sign_off": _first_name(r["sales_rep"]),
+            "account_manager": r["sales_rep"],
             "currently_buys": r["bought_categories"],
             "orders_last_month": r["num_orders"],
             "distinct_products": r["num_skus"],
