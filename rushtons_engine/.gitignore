@@ -1,0 +1,7 @@
+# never commit credentials or local artifacts
+.env
+rushtons.db
+output/
+data/
+.venv/
+__pycache__/

@@ -1,0 +1,24 @@
+# GitHub Actions keepalive for the Supabase FREE tier (decision 7).
+# Free-tier projects pause after ~7 days of inactivity; this pings the DB twice
+# a week so the weekly run never finds a paused database.
+#
+# Setup (when this repo is pushed to GitHub):
+#   1. Move this file to .github/workflows/keepalive.yml
+#   2. Add repo secret SUPABASE_DB_URL = postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
+
+name: supabase-keepalive
+on:
+  schedule:
+    - cron: "0 6 * * 1,4"   # Mondays and Thursdays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database
+        run: |
+          sudo apt-get install -y -q postgresql-client >/dev/null
+          psql "$SUPABASE_DB_URL" -c "select count(*) from customers;"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

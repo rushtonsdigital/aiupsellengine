@@ -1,0 +1,12 @@
+# Raw Fresho exports — real customer/order data, kept local only, not pushed
+*.csv
+
+# Internal kickoff/budget planning notes — not pushed by default
+*.pdf
+
+# Stale pre-branding draft, superseded by "... Meeting Briefing (v2).docx"
+Rushtons AI Upsell Engine - Meeting Briefing.docx
+
+# Office lock/temp files
+~$*
+~WRL*.tmp
