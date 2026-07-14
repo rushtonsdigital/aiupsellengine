@@ -1,18 +1,26 @@
-"""Weekly orchestrator — two-step flow, drafting done by Claude Code.
+"""Weekly orchestrator — two commands, four steps.
 
-Step 1 (selection):
+    1. code selects WHO to target      \\ run_weekly.py
+    2. code selects WHAT IS ELIGIBLE   /   (selection + brief)
+    3. AI picks the final products     \\ Claude Code session
+    4. AI writes the messages          /   (reads brief, writes drafts JSON)
+                                       -- run_weekly.py --drafts (validate+apply)
+
+Command 1 (selection):
     python run_weekly.py [--data-dir DIR]
-      ingest -> metrics -> classify -> deterministic top-10 ->
-      writes output/drafting_brief_<date>.json + tracker (drafts pending)
+      ingest -> metrics -> classify -> deterministic top-10 -> eligible
+      product pool per account -> writes output/drafting_brief_<date>.json
+      + tracker (products and drafts pending)
 
-Step 2 (after Claude Code writes output/drafts_<date>.json):
+Command 2 (after Claude Code writes output/drafts_<date>.json):
     python run_weekly.py --drafts output/drafts_<date>.json
-      validates drafts against the locked selection, stores them in comms,
-      regenerates the tracker with drafts filled in.
+      validates the drafter's product picks against each account's pool and
+      the messages against the locked selection, stores both, regenerates the
+      tracker complete.
 
 Every step is idempotent; re-running a week replaces that week's outputs.
-The drafting step can never change WHO was selected — apply_drafts rejects
-any account outside the locked ten.
+Two things the drafting step can never do, both enforced in draft.py: change
+WHO was selected, or pitch a product that wasn't in that account's pool.
 """
 
 import argparse

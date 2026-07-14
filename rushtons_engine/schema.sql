@@ -68,7 +68,11 @@ create table if not exists recommendations (
   rank               int,
   score              numeric,
   gap_categories     jsonb,         -- list of canonical category names
-  suggested_products jsonb,         -- {category: [{code, name, buyers_14d}]}
+  -- step 2 (code): everything eligible to pitch, per gap category
+  product_pool       jsonb,         -- {category: [{code, name, product_group, buyers_14d}]}
+  -- step 3 (drafter): the few actually pitched, chosen from product_pool.
+  -- null until drafts are applied; every code here must exist in product_pool.
+  chosen_products    jsonb,         -- [{code, name, category, why}]
   rationale          text,
   status             text default 'proposed',  -- proposed|approved|rejected|sent|converted
   created_at         timestamptz default now(),

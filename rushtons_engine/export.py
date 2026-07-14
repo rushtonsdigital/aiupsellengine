@@ -27,14 +27,20 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 SUMMARY_COLS = [
     "Rank", "Customer Code", "Customer Name", "Venue Type", "Account Manager",
     "Size Band", "Orders (month)", "SKUs", "Categories Bought",
-    "Gap Categories to Pitch", "Score",
+    "Gap Categories to Pitch", "Products Pitched", "Score",
     "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
     "Contact (phone)", "Approved (Y/N)", "Sent Date", "Box Sent (Y/N)",
     "Outcome", "Notes",
 ]
-SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 8, 45, 45, 45,
+SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 34, 8, 45, 45, 45,
                      16, 12, 12, 12, 18, 30]
 WHATSAPP_COL_LABELS = ("WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box")
+
+
+def _pitched(rec: dict) -> str:
+    """The products the drafter actually chose — blank until drafts applied."""
+    return ", ".join(f"{p['name']} ({p['code']})"
+                     for p in rec.get("chosen_products") or [])
 
 
 def _wrapped_row_height(texts: list[str], chars_per_line: int = 45,
@@ -109,6 +115,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
             "Orders (month)": rec["num_orders"], "SKUs": rec["num_skus"],
             "Categories Bought": ", ".join(rec["bought_categories"]),
             "Gap Categories to Pitch": ", ".join(rec["gap_categories"]),
+            "Products Pitched": _pitched(rec),
             "Score": float(rec["score"]),
             **messages,
             "Contact (phone)": "", "Approved (Y/N)": "", "Sent Date": "",
@@ -144,12 +151,34 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
         put("Rank / score", f"{rec['rank']} / {rec['score']}")
         put("Why selected", rec["rationale"], wrap=True)
         put("Currently buys", ", ".join(rec["bought_categories"]))
+        if rec.get("customer_review"):
+            put("Customer review", rec["customer_review"], wrap=True)
+        if rec.get("data_notes"):
+            put("Data notes", rec["data_notes"], wrap=True)
         row += 1
-        _header_row(tab, row, ["Gap category", "Suggested products (in season, popular now)"])
+
+        # What we're actually pitching, and why — the review surface that matters.
+        chosen = rec.get("chosen_products") or []
+        _header_row(tab, row, ["Product pitched", "Why this kitchen"])
         row += 1
-        for cat, items in rec["suggested_products"].items():
+        for p in chosen:
+            tab.cell(row=row, column=1,
+                     value=f"{p['name']} ({p['code']})").font = LABEL_FONT
+            cell = tab.cell(row=row, column=2, value=p.get("why", ""))
+            cell.alignment = WRAP
+            row += 1
+        if not chosen:
+            tab.cell(row=row, column=1, value="[pending]").font = LABEL_FONT
+            tab.cell(row=row, column=2, value="products chosen at drafting")
+            row += 1
+        row += 1
+
+        # The full eligible pool, for anyone who wants to check the call.
+        _header_row(tab, row, ["Gap category", "Eligible pool (in season, not currently bought)"])
+        row += 1
+        for cat, items in rec["product_pool"].items():
             names = "\n".join(f"{p['name']} ({p['code']}) — {p['buyers_14d']} recent buyers"
-                              for p in items) or "no in-season suggestions"
+                              for p in items) or "no in-season products available"
             tab.cell(row=row, column=1, value=cat).font = LABEL_FONT
             cell = tab.cell(row=row, column=2, value=names)
             cell.alignment = WRAP

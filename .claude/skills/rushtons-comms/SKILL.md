@@ -1,16 +1,78 @@
 ---
 name: rushtons-comms
-description: Voice, tone and structure for drafting Rushton's WhatsApp customer outreach. Use whenever writing customer-facing messages for the Rushton's upsell engine (announcement / follow-up / post-box stages) — always load this before drafting, never rely on memory of past tone rules.
+description: Choosing which products to pitch to each Rushton's account, and the voice/tone/structure for the WhatsApp outreach itself. Use whenever selecting products or writing customer-facing messages for the Rushton's upsell engine (announcement / follow-up / post-box stages) — always load this before drafting, never rely on memory of past rules.
 ---
 
 # Rushton's Customer Communications
 
-Source of truth: `Rushtons_CS_Tone_Guidelines (1).md` (project root), received directly from
-the client 2026-07-08. If that file is ever updated, re-derive this skill from it — don't let
-this summary drift out of sync with the original.
+Source of truth for tone: `Rushtons_CS_Tone_Guidelines (1).md` (project root), received
+directly from the client 2026-07-08. If that file is ever updated, re-derive this skill from it
+— don't let this summary drift out of sync with the original.
 
 Before drafting anything, also read `feedback-log.md` in this folder — it holds corrections and
 confirmations from the client that are more recent than this file and take priority over it.
+
+You have two jobs, in order: **choose the products** (step 3), then **write the messages**
+(step 4). The first one is where these messages are won or lost — a perfectly written message
+about the wrong product is still the wrong message.
+
+# Part 1 — Choosing the products (step 3)
+
+The engine hands you a `product_pool` per gap category: everything eligible to pitch, already
+filtered to in-season lines the account doesn't currently buy. Your job is to pick at most
+three that genuinely fit *this specific kitchen*.
+
+## The pool is a shortlist, not a ranking to obey
+
+Pool items carry `buyers_14d` — how many other customers bought that line recently. **This is a
+popularity signal, not a recommendation.** It systematically favours commodity staples over the
+specialty lines Rushton's actually wants to push, because Fresho's product groups mix both into
+one flat category. Left to popularity alone the engine suggested Baby Cucumber and Baby Corn
+under "Baby Vegetables" — when what Rushton's want in front of a chef is the British specialty
+range: Remfresh baby beetroot (red, candy, golden), baby fennel, baby carrots (orange and
+coloured), baby Tokyo turnips.
+
+Treat a high `buyers_14d` as "this is definitely available and moving right now" — useful
+reassurance, not a reason to pick it. Prefer the line that gives a chef a reason to care.
+
+## What makes a good pick
+
+- **Distinctive over commodity.** Something they can't get everywhere, or wouldn't have thought
+  to ask for. The pitch is a tip-off; a tray of the obvious isn't a tip-off.
+- **British and seasonal where possible** — it's what Rushton's is known for, and it's the
+  reason to be talking to a chef this week rather than any other week.
+- **Actually usable in that kitchen.** Read the venue. A cocktail bar wants mint, not
+  lemongrass — both are "Exotic Fruit & Veg" to Fresho, only one goes in a drink. Look up the
+  venue if the name is identifiable and it would sharpen the call; knowing they're a steak
+  house, a Neapolitan pizzeria, or a members' club changes the answer.
+- **Something you'd send as a sample.** Think about what physically arrives. Not "eggs" — a
+  pack of Clarence Court. The pool gives you product lines; pick the one that makes a good box.
+
+## When to walk away from a category
+
+**You may drop a whole gap category if nothing in its pool honestly fits.** Two well-judged
+products beat three where one is a stretch. If you can't write a `why` for a pick that a chef
+would find convincing, it isn't a pick.
+
+Real example of what to avoid: the engine offered panko crumbs to Hawksmoor — a British steak
+chain. Nothing about that venue suggests a use for it, and there was no menu context to justify
+it. A suggestion that needs a paragraph of internal justification to make sense is one that
+should have been dropped.
+
+## Justify every pick
+
+Every chosen product needs a one-line `why` tying it to *this* kitchen — the venue, its menu,
+what they already buy, or the season. "Popular right now" is not a `why`. That line is what the
+CS team reads before sending, and it's what a chef would need to hear.
+
+If you spot something that looks like an internal labelling or categorisation problem — a
+category mixing commodity and specialty lines, a product that's clearly mis-grouped — record it
+in `data_notes`. That's how the product data gets fixed rather than worked around.
+
+# Part 2 — Writing the messages (step 4)
+
+Write around the products you chose, and nothing else. If you dropped a category, it doesn't
+appear in the message.
 
 ## Voice
 

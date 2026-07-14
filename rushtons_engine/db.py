@@ -81,7 +81,11 @@ recommendations = sa.Table(
     sa.Column("rank", sa.Integer),
     sa.Column("score", sa.Numeric),
     sa.Column("gap_categories", sa.JSON),
-    sa.Column("suggested_products", sa.JSON),
+    # Step 2 (code): every product eligible to pitch, per gap category.
+    sa.Column("product_pool", sa.JSON),
+    # Step 3 (drafter): the few actually pitched, chosen from product_pool
+    # with the customer in view. Null until drafts are applied.
+    sa.Column("chosen_products", sa.JSON),
     sa.Column("rationale", sa.Text),
     sa.Column("status", sa.Text, default="proposed"),
     sa.Column("created_at", sa.DateTime(timezone=True)),
@@ -113,10 +117,36 @@ def get_engine(url: str | None = None) -> sa.Engine:
 
 
 def init_db(engine: sa.Engine | None = None) -> sa.Engine:
-    """Create all tables if missing. Safe to call every run."""
+    """Create all tables if missing, then apply in-place column migrations.
+    Safe to call every run."""
     engine = engine or get_engine()
     metadata.create_all(engine)
+    _migrate_recommendations(engine)
     return engine
+
+
+def _migrate_recommendations(engine: sa.Engine) -> None:
+    """Bring an existing recommendations table up to the current schema.
+
+    create_all() only creates missing tables — it will not add columns to one
+    that already exists, so a database written before the 4-step split (pool
+    vs chosen products) needs these applied by hand. Both statements are
+    supported by SQLite 3.25+ and Postgres, and both are no-ops once applied.
+    """
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("recommendations"):
+        return
+    cols = {c["name"] for c in inspector.get_columns("recommendations")}
+    statements = []
+    if "suggested_products" in cols and "product_pool" not in cols:
+        statements.append("alter table recommendations "
+                          "rename column suggested_products to product_pool")
+    if "chosen_products" not in cols:
+        statements.append("alter table recommendations "
+                          "add column chosen_products json")
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(sa.text(stmt))
 
 
 def now_utc() -> datetime:

@@ -102,8 +102,26 @@ SEGMENT_FOCUS_CATEGORIES = {
 
 GAP_LOOKBACK_DAYS = None   # decision 10: full history (set to e.g. 84 later)
 SUGGESTION_WINDOW_DAYS = 14  # "in season now" = ordered in the last 2 weeks
-SUGGESTIONS_PER_GAP = 3
 MAX_GAPS_PER_ACCOUNT = 3   # a sample box is themed; don't pitch 8 categories
+
+# Step 2 builds a *pool* of eligible products per gap; step 3 (the drafter)
+# picks the final few from it, with the customer in view.
+#
+# The pool comes from the catalogue, not from what's selling — the specialty
+# lines Rushton's most wants to pitch (baby candy beetroot, Yukon baby fennel,
+# heritage carrots) are low-volume by definition, so a pool sourced from recent
+# orders can never surface them. That is exactly how three commodity staples
+# (Baby Cucumber, Baby Corn, Rainbow Yukon carrots) became the entire Baby
+# Vegetables pitch. Client feedback 2026-07-14.
+#
+# 30 covers every fresh-produce category where the commodity-vs-specialty split
+# actually bites (Baby Vegetables has 22 distinct products, Tomatoes 25,
+# Italian 29). The handful of much larger categories — Dry Stores (389),
+# Dairy (123), Vegetables (110) — are still truncated by popularity, so a rare
+# line deep in one of those tails can be missed. The durable fix for that is a
+# curated hero-line list per category from the sales team, not a bigger number.
+POOL_PER_GAP = 30          # eligible candidates handed to the drafter per gap
+MAX_CHOSEN_PRODUCTS = 3    # how many the drafter may actually pitch per account
 
 # Internal / non-customer accounts, detected from the customer name.
 INTERNAL_NAME_KEYWORDS = [
