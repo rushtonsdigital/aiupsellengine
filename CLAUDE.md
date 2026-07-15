@@ -18,8 +18,8 @@ The weekly run is four steps, and the split matters:
 Inside those boundaries the AI's judgement is the point, not a liability:
 choosing the *right* product for a venue (and dropping a gap category when
 nothing fits) is step 3's whole job. Ranking by popularity alone got this
-wrong — see `feedback-log.md` in the comms skill for the client feedback
-(2026-07-14) that drove the split.
+wrong — see `feedback-log.md` in the `rushtons-product-selection` skill for
+the client feedback (2026-07-14) that drove the split.
 
 ## Weekly update procedure
 
@@ -36,20 +36,22 @@ When the user asks to "run the weekly update" (or similar):
    This ingests, classifies, selects the top 10, builds each account's
    eligible product pool, and writes
    `rushtons_engine/output/drafting_brief_<date>.json`.
-3. Before drafting, load the `rushtons-comms` skill
-   (`.claude/skills/rushtons-comms/SKILL.md`) — it holds the product-selection
-   judgement for step 3, the real client tone guidelines, example messages,
-   and a feedback log of corrections. Always check `feedback-log.md` in that
-   folder too; it overrides `SKILL.md` where they conflict. Do not work from
-   memory of past rules — guidance changes as the client gives feedback, and
-   this skill is the only place that's kept current.
+3. Two skills, one per AI step — load each (with its `feedback-log.md`, which
+   overrides its `SKILL.md`) at the point you need it, never from memory:
+   - Step 3, picking: `rushtons-product-selection`
+     (`.claude/skills/rushtons-product-selection/SKILL.md`) — the product-
+     selection judgement, and the **mandatory live web search** of every venue.
+   - Step 4, writing: `rushtons-comms`
+     (`.claude/skills/rushtons-comms/SKILL.md`) — the real client tone
+     guidelines, example messages, and tone feedback log.
 4. Read the brief. For each account: **first pick the products** from its
-   `product_pool` (step 3 — look at who the customer actually is; search the
-   web where the venue is identifiable and it sharpens the call; drop a gap
-   category if nothing in it genuinely fits), **then write** the three
-   WhatsApp messages around those picks (step 4). Save as
+   `product_pool` (step 3 — run a live web search of the venue first, then pick
+   what genuinely fits and drop any gap category that doesn't; record the
+   search in `customer_review`), **then write** the three WhatsApp messages
+   around those picks (step 4). Save as
    `rushtons_engine/output/drafts_<date>.json` in the format the brief's
-   `instructions` field specifies — every pick needs a one-line `why`.
+   `instructions` field specifies — every pick needs a one-line `why`, and
+   every account needs a `customer_review` (apply_drafts rejects a missing one).
 5. Apply and finalise:
    ```
    rushtons_engine\.venv\Scripts\python.exe rushtons_engine\run_weekly.py --drafts rushtons_engine\output\drafts_<date>.json

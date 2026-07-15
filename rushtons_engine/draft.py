@@ -47,30 +47,31 @@ log = logging.getLogger(__name__)
 STAGES = ("announcement", "followup", "postbox")
 
 INSTRUCTIONS = (
-    "Two jobs here, in order. Load the rushtons-comms skill first "
-    "(.claude/skills/rushtons-comms/SKILL.md) — it carries the product-"
-    "selection judgement, tone, real examples and the latest client feedback. "
-    "Read feedback-log.md in that folder too; it overrides SKILL.md. Do not "
-    "work from memory of past rules.\n\n"
-    "STEP 3 — choose the products. Each account below has a `product_pool`: "
-    "everything eligible to pitch, per gap category, already filtered to in-"
-    "season lines they don't currently buy. Ranked by recent buyer count, but "
-    "that is a popularity signal, NOT a recommendation — it favours commodity "
-    "staples over the specialty lines worth pitching. Look at who the customer "
-    "actually is (name, venue type, what they already buy; search the web if "
-    "the venue is identifiable and it would sharpen the call) and pick the "
-    f"products that genuinely fit that kitchen — at most "
-    f"{config.MAX_CHOSEN_PRODUCTS} per account. Give a one-line `why` for each.\n\n"
-    "You may only choose codes that appear in that account's product_pool — "
-    "never invent one. You MAY ignore a whole gap category if nothing in its "
-    "pool honestly fits this venue; pitching two well-judged products beats "
-    "three where one is a stretch. Note anything that looks like a product-"
-    "labelling problem in `data_notes`.\n\n"
-    "STEP 4 — write the three WhatsApp messages (announcement, followup, "
-    "postbox) around the products you chose, per the skill's tone guidance.\n\n"
+    "Two jobs here, in order, each with its own skill. Do not work from memory "
+    "of past rules — load the skill and its feedback-log.md each time; guidance "
+    "changes as the client gives feedback.\n\n"
+    "STEP 3 — choose the products. Load the rushtons-product-selection skill "
+    "(.claude/skills/rushtons-product-selection/SKILL.md) and its feedback-log. "
+    "Each account below has a `product_pool`: everything eligible to pitch, per "
+    "gap category, already filtered to in-season lines they don't currently "
+    "buy. `buyers_14d` is a popularity signal, NOT a recommendation — it "
+    "favours commodity staples over the specialty lines worth pitching. "
+    "REQUIRED: run a live web search of every venue before picking its products "
+    "— you cannot judge fit from a customer code, and the venue_type is often "
+    "thin or 'Unknown'. Record what you found in `customer_review` (say so "
+    "explicitly if a venue can't be found). Then pick the products that "
+    f"genuinely fit that kitchen — at most {config.MAX_CHOSEN_PRODUCTS} per "
+    "account, a one-line `why` for each. You may only choose codes in that "
+    "account's product_pool — never invent one. You MAY drop a whole gap "
+    "category if nothing in its pool honestly fits. Note any product-labelling "
+    "problem in `data_notes`.\n\n"
+    "STEP 4 — write the messages. Load the rushtons-comms skill "
+    "(.claude/skills/rushtons-comms/SKILL.md) and its feedback-log, then write "
+    "the three WhatsApp messages (announcement, followup, postbox) around the "
+    "products you chose, per its tone guidance.\n\n"
     "Save to drafts_{run_date}.json in this folder:\n"
     '{"<customer_code>": {\n'
-    '   "customer_review": "one line on what this venue actually is and cooks",\n'
+    '   "customer_review": "what your web search found — venue, what they cook",\n'
     '   "chosen_products": [{"code": "...", "name": "...", "category": "...",\n'
     '                        "why": "why this fits this kitchen"}],\n'
     '   "data_notes": "optional — labelling/categorisation problems spotted",\n'
@@ -136,6 +137,12 @@ def _validate(drafts: dict, recommendations: list[dict]) -> None:
                 '{"chosen_products": [...], "messages": {...}} — got a bare '
                 "message block. Re-draft from the current brief; the drafter "
                 "now picks the products too.")
+
+        if not (entry.get("customer_review") or "").strip():
+            raise ValueError(
+                f"{code}: no customer_review — step 3 requires a live web "
+                "search of the venue before picking. Record what it found here "
+                "(or say the venue couldn't be found).")
 
         chosen = entry.get("chosen_products") or []
         if not chosen:

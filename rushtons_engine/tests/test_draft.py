@@ -99,6 +99,13 @@ def test_apply_rejects_no_products_chosen(conn, tmp_path):
         draft.apply_drafts(conn, drafts, [_rec("C ONE")])
 
 
+def test_apply_rejects_missing_customer_review(conn, tmp_path):
+    """customer_review is the evidence the required venue web search happened."""
+    drafts = _write_drafts(tmp_path, {"C ONE": _entry(customer_review="  ")})
+    with pytest.raises(ValueError, match="no customer_review"):
+        draft.apply_drafts(conn, drafts, [_rec("C ONE")])
+
+
 def test_apply_rejects_too_many_products(conn, tmp_path):
     import config
     picks = [{"code": "DAI-1", "name": "Burrata", "category": "Dairy and Chilled",
