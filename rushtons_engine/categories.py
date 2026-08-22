@@ -45,6 +45,7 @@ RAW_GROUP_TO_CATEGORY = {
     "S. Miscellaneous": "Miscellaneous",
     "S. Miscellaneous Prep": "Miscellaneous Prep",
     "Z888. Out of Season": "Out of Season",
+    "Z999. Delisted": "Delisted",
 }
 
 # Blank product group appears on a handful of rows (3 in June 2026); the
@@ -52,6 +53,15 @@ RAW_GROUP_TO_CATEGORY = {
 BLANK_GROUP_CATEGORY = "Miscellaneous"
 
 OUT_OF_SEASON_GROUP = "Z888. Out of Season"
+DELISTED_GROUP = "Z999. Delisted"
+
+# Z-code parking buckets mark a product's *status*, not its produce category.
+# They must never overwrite the real category resolved from the product's other
+# rows (a herb that's now delisted is still a herb for historical/gap purposes),
+# and neither category is in TARGETABLE_CATEGORIES so neither is pitched. The
+# `delisted`/`out_of_season` flags on the product then keep them out of the
+# eligible pool entirely — see selector.build_pool / ingest._upsert_products.
+NON_INFORMATIVE_GROUPS = {OUT_OF_SEASON_GROUP, DELISTED_GROUP}
 
 
 class UnknownProductGroupError(ValueError):
@@ -74,6 +84,6 @@ def to_category(raw_group: str) -> str:
 
 def is_informative(raw_group: str) -> bool:
     """True when the group tells us the product's real category
-    (not blank, not the Out of Season parking bucket)."""
+    (not blank, not a Z-code status parking bucket)."""
     raw = (raw_group or "").strip()
-    return bool(raw) and raw != OUT_OF_SEASON_GROUP
+    return bool(raw) and raw not in NON_INFORMATIVE_GROUPS

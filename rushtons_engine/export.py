@@ -5,6 +5,7 @@ this file is an export of `recommendations` + `comms`, with blank columns the
 CS team fills in by hand (contact, approved, sent, outcome).
 """
 
+import csv
 import logging
 import re
 import time
@@ -27,7 +28,7 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 SUMMARY_COLS = [
     "Rank", "Customer Code", "Customer Name", "Venue Type", "Account Manager",
     "Size Band", "Orders (month)", "SKUs", "Categories Bought",
-    "Gap Categories to Pitch", "Products Pitched", "Score",
+    "Gap Categories (offered)", "Products Pitched", "Score",
     "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
     "Contact (phone)", "Approved (Y/N)", "Sent Date", "Box Sent (Y/N)",
     "Outcome", "Notes",
@@ -93,6 +94,31 @@ def _header_row(ws, row, values):
         cell.font = HEADER_FONT
 
 
+REVIEW_COLS = ["customer_code", "customer_name", "account_stage", "venue_type",
+               "activity_status", "last_order_date", "selected_this_week"]
+
+
+def write_new_customers_review(rows: list[dict], run_date, selected_codes=None,
+                              out_dir: Path | None = None) -> Path:
+    """Write the 'new customers to review' CSV: trading accounts with no known
+    venue type, for the team to look up online and add to the Fresho master.
+    Always written (even when empty) so its absence is never mistaken for a
+    clean run."""
+    out_dir = Path(out_dir or config.EXPORT_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"new_customers_to_review_{run_date}.csv"
+    selected = set(selected_codes or [])
+    with open(path, "w", newline="", encoding="utf-8-sig") as fh:
+        writer = csv.DictWriter(fh, fieldnames=REVIEW_COLS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({**{k: r.get(k, "") for k in REVIEW_COLS},
+                             "selected_this_week":
+                                 "yes" if r["customer_code"] in selected else ""})
+    log.info("new-customer review list: %s (%d to review)", path, len(rows))
+    return path
+
+
 def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = None) -> Path:
     out_dir = Path(out_dir or config.EXPORT_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -114,7 +140,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
             "Account Manager": rec["sales_rep"], "Size Band": rec["size_band"],
             "Orders (month)": rec["num_orders"], "SKUs": rec["num_skus"],
             "Categories Bought": ", ".join(rec["bought_categories"]),
-            "Gap Categories to Pitch": ", ".join(rec["gap_categories"]),
+            "Gap Categories (offered)": ", ".join(rec["gap_categories"]),
             "Products Pitched": _pitched(rec),
             "Score": float(rec["score"]),
             **messages,

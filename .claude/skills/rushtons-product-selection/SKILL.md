@@ -15,10 +15,19 @@ corrections about product choices and overrides this file where they conflict.
 
 ## The input: a pool, not a recommendation
 
-The engine hands you a `product_pool` per gap category for each account: everything eligible to
-pitch, already filtered to in-season lines the account doesn't currently buy. Your job is to pick
-**at most three per account** that genuinely fit *that specific kitchen* — and to drop anything
-that doesn't.
+The engine hands you a `product_pool` for each account covering **every category they don't
+currently buy** that has stock, each filtered to in-season lines. The categories are listed in a
+rough relevance order, **but that order is only a hint** — code no longer decides which categories
+to pitch, you do. A category near the bottom of the list can be the best one for this venue: an
+Italian trattoria typed as a "Bar" will have baby veg, micros and mushroom sitting well below
+herbs, when those are exactly what its kitchen wants. Read the venue, then decide which categories
+fit; ignore the rest.
+
+Your job is to shortlist **up to five products per account** — a menu of options for the human
+running the campaign to pick the final box from, not a fixed box. Favour a **spread across the
+categories that fit** over five near-duplicates from one, so the human has real choice. The quality
+bar is unchanged: every product on the shortlist must be defensible on its own. If only two things
+genuinely fit, shortlist two — five is a ceiling, not a target.
 
 Pool items carry two trade signals, both of which you weigh rather than obey:
 
@@ -72,9 +81,9 @@ only") and pick conservatively — don't guess a cuisine you can't confirm.
 
 ## When to walk away from a category
 
-**You may drop a whole gap category if nothing in its pool honestly fits.** Two well-judged
-products beat three where one is a stretch. If you can't write a `why` for a pick that a chef would
-find convincing, it isn't a pick.
+Most accounts are offered many categories and only a few will fit — **ignore the ones that don't.**
+A well-judged shortlist across two or three fitting categories beats one padded out with stretches.
+If you can't write a `why` for a pick that a chef would find convincing, it isn't a pick.
 
 Real example of what to avoid: the engine offered panko crumbs to Hawksmoor — a British steak
 chain. Nothing about that venue suggests a use for it, and there was no menu context to justify it.
@@ -96,7 +105,8 @@ how the source data gets fixed rather than silently patched over.
 
 ## Output
 
-Per account, produce: a `customer_review` (from your search), `chosen_products` (each with `code`,
-`name`, `category`, `why` — codes must come from that account's pool, never invented), and optional
-`data_notes`. The exact JSON shape is in the drafting brief's `instructions` field. Then hand over
-to the `rushtons-comms` skill to write the messages around your picks.
+Per account, produce: a `customer_review` (from your search), `chosen_products` (the shortlist of up
+to five, each with `code`, `name`, `category`, `why` — codes must come from that account's pool,
+never invented), and optional `data_notes`. The exact JSON shape is in the drafting brief's
+`instructions` field. Then hand over to the `rushtons-comms` skill to write the messages around your
+picks.

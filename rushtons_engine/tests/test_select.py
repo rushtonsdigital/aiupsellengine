@@ -23,6 +23,9 @@ def _seed_catalogue(conn):
     add_product(conn, "DAI-2", name="Milk Whole", category="Dairy and Chilled")
     add_product(conn, "DAI-3", name="Yoghurt Greek", category="Dairy and Chilled",
                 out_of_season=True)
+    # delisted line: keeps its real category but must never be pitched
+    add_product(conn, "DAI-4", name="Cream Sour (discontinued)",
+                category="Dairy and Chilled", delisted=True)
     # The specialty line nobody has bought recently — the whole reason the pool
     # is sourced from the catalogue rather than from recent orders.
     add_product(conn, "DAI-9", name="Cheese Baron Bigod", category="Dairy and Chilled")
@@ -37,6 +40,24 @@ def _seed_catalogue(conn):
 def _classify_and_select(conn):
     classify.classify_all(conn, AS_OF)
     return sel.select_top(conn, run_date=AS_OF)
+
+
+def test_customers_needing_review(conn):
+    _seed_catalogue(conn)
+    add_customer(conn, "TYPED", venue_type="Restaurants")       # known type
+    weekly_orders(conn, "TYPED", ["VEG-1"], START, weeks=2)
+    add_customer(conn, "UNTYPED", venue_type=None)              # unknown type
+    weekly_orders(conn, "UNTYPED", ["VEG-1"], START, weeks=2)
+    add_customer(conn, "NOORDERS", venue_type=None)            # never ordered
+    add_customer(conn, "STAFF ACCOUNT", name="Staff Account",  # internal
+                 venue_type=None)
+    weekly_orders(conn, "STAFF ACCOUNT", ["VEG-1"], START, weeks=2)
+    classify.classify_all(conn, AS_OF)
+    review = {r["customer_code"] for r in sel.customers_needing_review(conn)}
+    assert "UNTYPED" in review           # trades, no known type -> review
+    assert "TYPED" not in review         # already typed
+    assert "NOORDERS" not in review      # never traded
+    assert "STAFF ACCOUNT" not in review  # internal / excluded
 
 
 def test_narrow_engaged_account_is_selected_wide_account_is_not(conn):
@@ -137,11 +158,12 @@ def test_gaps_follow_segment_focus_and_pool_is_in_season(conn):
     rec = next(r for r in results if r["customer_code"] == "REST")
     # Restaurants focus leads with Dairy and Chilled (meeting-PDF priority)
     assert rec["gap_categories"][0] == "Dairy and Chilled"
-    assert len(rec["gap_categories"]) <= config.MAX_GAPS_PER_ACCOUNT
+    assert len(rec["gap_categories"]) <= config.MAX_GAP_CATEGORIES_OFFERED
     dairy = rec["product_pool"]["Dairy and Chilled"]
     codes = [p["code"] for p in dairy]
     assert "DAI-1" in codes          # most-bought recent product leads
     assert "DAI-3" not in codes      # out_of_season never enters the pool
+    assert "DAI-4" not in codes      # delisted never enters the pool
     assert len(dairy) <= config.POOL_PER_GAP
     assert codes == sorted(codes, key=lambda c: (-next(p["buyers_14d"] for p in dairy if p["code"] == c), c))
     # the drafter needs Fresho's own grouping to spot mislabelled categories

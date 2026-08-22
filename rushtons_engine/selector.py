@@ -41,6 +41,29 @@ def as_of_date(conn) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
 
 
+def customers_needing_review(conn) -> list[dict]:
+    """Trading customers whose venue type we don't know — the ones a human
+    should look up online and add to the Fresho master. Covers both engine-
+    created stubs (account_stage 'new (auto)', in orders but never in a master
+    export) and any master customer left without a type. Excludes internal /
+    non-customer accounts and anyone who has never ordered. Newest first."""
+    c = db.customers.c
+    rows = conn.execute(
+        sa.select(c.customer_code, c.customer_name, c.account_stage,
+                  c.venue_type, c.activity_status, c.last_order_date)
+        .where(c.last_order_date.is_not(None))
+        .where(sa.func.coalesce(c.activity_status, "") != "excluded")
+        .where(sa.or_(c.venue_type.is_(None), c.venue_type == "Unknown"))
+        .order_by(c.last_order_date.desc(), c.customer_name)
+    ).fetchall()
+    return [{"customer_code": r.customer_code, "customer_name": r.customer_name,
+             "account_stage": r.account_stage or "",
+             "venue_type": r.venue_type or "Unknown",
+             "activity_status": r.activity_status or "",
+             "last_order_date": str(r.last_order_date) if r.last_order_date else ""}
+            for r in rows]
+
+
 def _customer_categories(conn, lookback_days: int | None, as_of: date) -> dict[str, set]:
     q = (sa.select(db.orders.c.customer_code, db.products.c.category)
          .select_from(db.orders.join(
@@ -74,17 +97,20 @@ def _recent_recommendations(conn, run_date: date) -> set[str]:
 
 
 def detect_gaps(bought: set[str], venue_type: str) -> tuple[list[str], list[str]]:
-    """Returns (all_targetable_gaps, focused_gaps). Focused = intersected with
-    the segment focus map (meeting-PDF priorities), capped, deterministic order:
-    segment-focus list order first, remaining gaps alphabetically."""
+    """Returns (all_targetable_gaps, ordered_gaps).
+
+    ordered_gaps is every gap category, relevance-first: the segment map's
+    categories in its order, then the rest alphabetically. The map only ORDERS
+    here — it no longer gates. Which of these actually get pitched is step 3's
+    call, made after researching the venue; code's job is to not pre-exclude a
+    category the drafter might want. select_top then offers the first
+    MAX_GAP_CATEGORIES_OFFERED of these that have stock.
+    """
     gaps = [c for c in config.TARGETABLE_CATEGORIES if c not in bought]
     focus = config.SEGMENT_FOCUS_CATEGORIES.get(venue_type, [])
-    focused = [c for c in focus if c in gaps]
-    if not focused:
-        focused = sorted(gaps)
-    else:
-        focused += [c for c in sorted(gaps) if c not in focused]
-    return gaps, focused[:config.MAX_GAPS_PER_ACCOUNT]
+    ordered = [c for c in focus if c in gaps]
+    ordered += [c for c in sorted(gaps) if c not in ordered]
+    return gaps, ordered
 
 
 def score_candidate(orders_per_week: float, gap_count: int,
@@ -159,7 +185,8 @@ def build_product_pool(conn, category: str, as_of: date,
          .select_from(db.products.outerjoin(
              recent, db.products.c.product_code == recent.c.product_code))
          .where(db.products.c.category == category)
-         .where(db.products.c.out_of_season.is_(False)))
+         .where(db.products.c.out_of_season.is_(False))
+         .where(db.products.c.delisted.is_(False)))
 
     # An account that buys any pack format of a product buys the product.
     excluded_bases = {base_code(s) for s in exclude_skus}
@@ -212,15 +239,15 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             continue
         if code in cooldown:
             continue
-        gaps, focused = detect_gaps(cats.get(code, set()), c.venue_type)
-        if not focused:
-            continue  # nothing to pitch
+        gaps, ordered_gaps = detect_gaps(cats.get(code, set()), c.venue_type)
+        if not ordered_gaps:
+            continue  # buys across every targetable category — nothing to pitch
         orders_per_week = s["num_orders"] / span_weeks
         avg_lines = s["num_lines"] / s["num_orders"]
         score = score_candidate(orders_per_week, len(gaps), c.venue_type, avg_lines)
         candidates.append({
             "customer_code": code, "customer": c, "stats": s,
-            "gaps": gaps, "focused": focused, "score": score,
+            "gaps": gaps, "ordered_gaps": ordered_gaps, "score": score,
             "total_qty_rank": s["num_lines"],
         })
 
@@ -257,22 +284,29 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
     for rank, cand in enumerate(top, start=1):
         c, s = cand["customer"], cand["stats"]
         code = cand["customer_code"]
-        pool = {
-            gap: build_product_pool(conn, gap, as_of, skus.get(code, set()))
-            for gap in cand["focused"]
-        }
+        # Offer every gap category with stock, in relevance order, up to the cap.
+        # Code no longer picks WHICH categories to pitch — step 3 does, from this.
+        pool = {}
+        for gap in cand["ordered_gaps"]:
+            items = build_product_pool(conn, gap, as_of, skus.get(code, set()))
+            if items:
+                pool[gap] = items
+            if len(pool) >= config.MAX_GAP_CATEGORIES_OFFERED:
+                break
+        offered_cats = list(pool)
         rationale = (
             f"{c.venue_type}; {c.activity_status}; {s['num_orders']} orders "
             f"({s['num_orders'] / span_weeks:.1f}/wk), "
             f"{len(skus.get(code, ()))} SKUs across "
             f"{len(cats.get(code, ()))} categories; "
             f"missing {len(cand['gaps'])}/{len(config.TARGETABLE_CATEGORIES)} "
-            f"targetable categories. Pitch: {', '.join(cand['focused'])}."
+            f"targetable categories. Offered (drafter picks): "
+            f"{', '.join(offered_cats)}."
         )
         # product_pool is code's output (step 2). chosen_products is the
         # drafter's pick from it (step 3) and stays None until apply_drafts.
         values = dict(run_date=as_of, customer_code=code, rank=rank,
-                     score=cand["score"], gap_categories=cand["focused"],
+                     score=cand["score"], gap_categories=offered_cats,
                      product_pool=pool, rationale=rationale)
         if code in existing_ids and code not in stale_codes:
             rec_id = existing_ids[code]
@@ -292,7 +326,7 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             "num_skus": len(skus.get(cand["customer_code"], ())),
             "num_cats": len(cats.get(cand["customer_code"], ())),
             "bought_categories": sorted(cats.get(cand["customer_code"], ())),
-            "gap_categories": cand["focused"],
+            "gap_categories": offered_cats,
             "all_gaps": cand["gaps"],
             "product_pool": pool,
             "rationale": rationale,

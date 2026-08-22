@@ -4,10 +4,13 @@ so tests and pre-Supabase runs work identically.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import sqlalchemy as sa
 
 import config
+
+_REPORTING_SQL = Path(__file__).resolve().parent / "reporting.sql"
 
 metadata = sa.MetaData()
 
@@ -38,6 +41,7 @@ products = sa.Table(
     sa.Column("raw_product_group", sa.Text),
     sa.Column("category", sa.Text),
     sa.Column("out_of_season", sa.Boolean, default=False),
+    sa.Column("delisted", sa.Boolean, default=False),
     sa.Column("first_seen", sa.Date),
     sa.Column("last_seen", sa.Date),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
@@ -60,6 +64,7 @@ orders = sa.Table(
 )
 sa.Index("idx_orders_customer", orders.c.customer_code)
 sa.Index("idx_orders_delivery_date", orders.c.delivery_date)
+sa.Index("idx_orders_product_code", orders.c.product_code)
 
 customer_week_metrics = sa.Table(
     "customer_week_metrics", metadata,
@@ -106,6 +111,57 @@ comms = sa.Table(
     sa.Column("created_at", sa.DateTime(timezone=True)),
 )
 
+# --- reporting / BI layer ----------------------------------------------------
+# Pre-aggregated summary tables, refreshed each weekly run by reporting.py in
+# the same delete-then-bulk-insert style as customer_week_metrics (metrics.py).
+# They exist so Metabase and the read-only chat path read cheap, pre-labelled
+# datasets instead of scanning the raw orders table live. Defined in metadata
+# (not just schema.sql) so create_all() builds them on both Postgres and SQLite
+# and the pytest fixtures can exercise the aggregation logic.
+#
+# NB: every measure here is a VOLUME measure (order counts, line counts,
+# quantity) — there is no price/revenue data anywhere in the source. total_qty
+# mixes qty_type (Each/kg/box) and is only meaningful grouped by product.
+
+customer_category_metrics = sa.Table(
+    "customer_category_metrics", metadata,
+    sa.Column("customer_code", sa.Text, sa.ForeignKey("customers.customer_code"),
+              primary_key=True),
+    sa.Column("category", sa.Text, primary_key=True),
+    sa.Column("line_count", sa.Integer),
+    sa.Column("order_count", sa.Integer),
+    sa.Column("total_qty", sa.Numeric),
+    sa.Column("first_bought", sa.Date),
+    sa.Column("last_bought", sa.Date),
+)
+
+product_metrics = sa.Table(
+    "product_metrics", metadata,
+    sa.Column("product_code", sa.Text, sa.ForeignKey("products.product_code"),
+              primary_key=True),
+    sa.Column("distinct_buyers", sa.Integer),
+    sa.Column("line_count", sa.Integer),
+    sa.Column("total_qty", sa.Numeric),
+    sa.Column("buyers_14d", sa.Integer),
+    sa.Column("buyers_90d", sa.Integer),
+    sa.Column("first_sold", sa.Date),
+    sa.Column("last_sold", sa.Date),
+)
+
+# One row per (run_date, customer_code, category): the gap_categories /
+# chosen_products JSON on recommendations, flattened in Python by
+# reporting.refresh_funnel so "conversion by category" is a plain group-by and
+# no consumer has to parse JSON (which diverges between Postgres and SQLite).
+recommendation_category_facts = sa.Table(
+    "recommendation_category_facts", metadata,
+    sa.Column("run_date", sa.Date, primary_key=True),
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("category", sa.Text, primary_key=True),
+    sa.Column("offered", sa.Boolean),
+    sa.Column("chosen", sa.Boolean),
+    sa.Column("rec_status", sa.Text),
+)
+
 _engine = None
 
 
@@ -122,7 +178,46 @@ def init_db(engine: sa.Engine | None = None) -> sa.Engine:
     engine = engine or get_engine()
     metadata.create_all(engine)
     _migrate_recommendations(engine)
+    _migrate_products(engine)
+    if engine.dialect.name == "postgresql":
+        apply_reporting_views(engine)
     return engine
+
+
+def apply_reporting_views(engine: sa.Engine) -> None:
+    """(Re)create the Postgres reporting views from reporting.sql.
+
+    Metabase and the read-only chat path (query.py) read these human-labelled
+    views, never the raw normalised tables. Postgres-only on purpose: the views
+    use date_trunc / unnest / ::date casts SQLite lacks, and SQLite is only ever
+    the local/test fallback that Metabase never connects to (init_db guards the
+    call). Uses `create or replace view`, so it is idempotent and re-applied
+    every run — the checked-in reporting.sql stays the source of truth.
+    """
+    sql = _REPORTING_SQL.read_text(encoding="utf-8")
+    # exec_driver_sql passes the script straight to psycopg2 (which runs the
+    # whole ;-separated batch in one call) without SQLAlchemy's colon parsing —
+    # essential because the views use `::date` casts that text() would mistake
+    # for bind parameters.
+    with engine.begin() as conn:
+        conn.exec_driver_sql(sql)
+
+
+def _migrate_products(engine: sa.Engine) -> None:
+    """Add columns to an existing products table that create_all() won't touch.
+
+    `delisted` arrived with Fresho's Z999. Delisted group (Aug 2026); a database
+    first written before then needs it added by hand. Idempotent: no-op once the
+    column exists. Supported by SQLite 3.25+ and Postgres.
+    """
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("products"):
+        return
+    cols = {c["name"] for c in inspector.get_columns("products")}
+    if "delisted" not in cols:
+        with engine.begin() as conn:
+            conn.execute(sa.text(
+                "alter table products add column delisted boolean default false"))
 
 
 def _migrate_recommendations(engine: sa.Engine) -> None:

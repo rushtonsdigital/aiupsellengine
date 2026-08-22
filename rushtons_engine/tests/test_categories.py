@@ -55,3 +55,8 @@ def test_out_of_season_is_not_informative():
     assert not categories.is_informative("Z888. Out of Season")
     assert not categories.is_informative("")
     assert categories.is_informative("S050. Fruits - SPLIT")
+
+
+def test_delisted_is_mapped_but_not_informative():
+    assert categories.to_category("Z999. Delisted") == "Delisted"
+    assert not categories.is_informative("Z999. Delisted")

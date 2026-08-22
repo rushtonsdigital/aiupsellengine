@@ -52,19 +52,23 @@ INSTRUCTIONS = (
     "changes as the client gives feedback.\n\n"
     "STEP 3 — choose the products. Load the rushtons-product-selection skill "
     "(.claude/skills/rushtons-product-selection/SKILL.md) and its feedback-log. "
-    "Each account below has a `product_pool`: everything eligible to pitch, per "
-    "gap category, already filtered to in-season lines they don't currently "
-    "buy. `buyers_14d` is a popularity signal, NOT a recommendation — it "
-    "favours commodity staples over the specialty lines worth pitching. "
-    "REQUIRED: run a live web search of every venue before picking its products "
-    "— you cannot judge fit from a customer code, and the venue_type is often "
-    "thin or 'Unknown'. Record what you found in `customer_review` (say so "
-    "explicitly if a venue can't be found). Then pick the products that "
-    f"genuinely fit that kitchen — at most {config.MAX_CHOSEN_PRODUCTS} per "
-    "account, a one-line `why` for each. You may only choose codes in that "
-    "account's product_pool — never invent one. You MAY drop a whole gap "
-    "category if nothing in its pool honestly fits. Note any product-labelling "
-    "problem in `data_notes`.\n\n"
+    "Each account's `product_pool` covers EVERY category they don't currently "
+    "buy (that has stock), ordered by likely relevance — but the order is only "
+    "a hint. Choosing which categories fit this venue is YOUR job, not the "
+    "order's: a category near the bottom may be the best one. `buyers_14d` is a "
+    "popularity signal, NOT a recommendation — it favours commodity staples "
+    "over the specialty lines worth pitching. REQUIRED: run a live web search "
+    "of every venue before picking — you cannot judge fit from a customer code, "
+    "and venue_type is often thin or 'Unknown'. Record what you found in "
+    "`customer_review` (say so explicitly if a venue can't be found). Then "
+    f"shortlist up to {config.MAX_CHOSEN_PRODUCTS} products that genuinely fit "
+    "— a menu of options for the human running the campaign, so favour a SPREAD "
+    "across the categories that fit rather than near-duplicates from one, with "
+    "a one-line `why` for each. Quality bar unchanged: every one must be "
+    "defensible; give fewer if fewer fit. You may only choose codes in that "
+    "account's product_pool — never invent one. Ignore any category that "
+    "doesn't fit the venue. Note any product-labelling problem in "
+    "`data_notes`.\n\n"
     "STEP 4 — write the messages. Load the rushtons-comms skill "
     "(.claude/skills/rushtons-comms/SKILL.md) and its feedback-log, then write "
     "the three WhatsApp messages (announcement, followup, postbox) around the "
@@ -151,8 +155,8 @@ def _validate(drafts: dict, recommendations: list[dict]) -> None:
         if len(chosen) > config.MAX_CHOSEN_PRODUCTS:
             raise ValueError(
                 f"{code}: {len(chosen)} products chosen, max is "
-                f"{config.MAX_CHOSEN_PRODUCTS} — a sample box is themed, not a "
-                "catalogue")
+                f"{config.MAX_CHOSEN_PRODUCTS} — the shortlist is a menu of "
+                "options for the human, not the whole catalogue")
 
         eligible = {p["code"] for items in pools[code].values() for p in items}
         for p in chosen:

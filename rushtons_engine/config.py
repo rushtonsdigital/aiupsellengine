@@ -17,13 +17,31 @@ load_dotenv(ENGINE_DIR / ".env")
 # Falls back to a local SQLite file so the engine runs before Supabase is provisioned.
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{ENGINE_DIR / 'rushtons.db'}")
 
+# The read-only role used by Metabase and the Claude Code chat path (query.py).
+# A separate Supabase login (rushtons_readonly) with SELECT-only grants; the
+# writer pipeline keeps using DATABASE_URL. Falls back to DATABASE_URL so local
+# SQLite dev/test — where DB roles don't exist — still works unchanged.
+REPORTING_DATABASE_URL = os.environ.get("REPORTING_DATABASE_URL", DATABASE_URL)
+
 DATA_DIR = Path(os.environ.get("DATA_DIR", ENGINE_DIR / "data"))
 EXPORT_DIR = Path(os.environ.get("EXPORT_DIR", ENGINE_DIR / "output"))
 
 # --- order data --------------------------------------------------------------
-# Every row in every export to date is 'Invoiced'. Anything else is new and
-# gets excluded with a loud warning until a human decides (open decision 4).
+# Every row counts only if it is invoiced. Anything else (e.g. 'accepted', an
+# order not yet invoiced) is excluded with a loud warning until a human decides
+# (open decision 4).
+#
+# Fresho changed the casing of this field mid-2026: June exports say 'Invoiced',
+# August exports say 'invoiced'. Match case-insensitively and store the canonical
+# spelling below, so old and new data land identically in the DB and every
+# downstream `order_state IN (COUNTED_ORDER_STATES)` filter keeps matching both.
 COUNTED_ORDER_STATES = {"Invoiced"}
+_COUNTED_CANONICAL = {s.casefold(): s for s in COUNTED_ORDER_STATES}
+
+
+def canonical_order_state(state: str) -> str | None:
+    """Canonical spelling if `state` is a counted state (case-insensitive), else None."""
+    return _COUNTED_CANONICAL.get((state or "").strip().casefold())
 
 # --- activity status (decision 6) ---------------------------------------------
 LAPSED_DAYS = 7            # regular-cadence account with no order in 7 days -> lapsed
@@ -79,10 +97,13 @@ TARGETABLE_CATEGORIES = [
     "Dairy and Chilled",
 ]
 
-# Meeting PDF upsell focus per segment, re-expressed in real Fresho categories
-# ("Bar and Room Service" / "Breakfast lines" do not exist in the data).
-# Awaiting Rushton's sign-off; when a segment is missing or the intersection is
-# empty, all targetable gaps are used.
+# Per-segment relevance ORDER for the gap categories offered to the drafter.
+# This is a sort hint, NOT a gate: every gap category with stock is offered to
+# step 3 regardless: these just come first in the brief so the usually-relevant
+# ones are near the top. A wrong or missing entry can only mis-order, never
+# exclude — the venue-researched step 3 makes the real category call. (Earlier
+# this was a hard filter capping the pitch to 3 lookup-table categories, which
+# silently hid a trattoria's baby veg / micros / mushroom behind a "Bars" map.)
 SEGMENT_FOCUS_CATEGORIES = {
     "Restaurants": ["Dairy and Chilled", "Dry Stores & Non Food", "Fruits",
                     "Micros, Leaves & Flowers"],
@@ -102,7 +123,13 @@ SEGMENT_FOCUS_CATEGORIES = {
 
 GAP_LOOKBACK_DAYS = None   # decision 10: full history (set to e.g. 84 later)
 SUGGESTION_WINDOW_DAYS = 14  # "in season now" = ordered in the last 2 weeks
-MAX_GAPS_PER_ACCOUNT = 3   # a sample box is themed; don't pitch 8 categories
+
+# How many gap CATEGORIES to hand the drafter, in relevance order. Code no
+# longer guesses which few to pitch — it offers this many (those with stock),
+# and the venue-researched step 3 decides which actually fit. Set high enough
+# that the ideal category is effectively never pre-excluded; the narrowest
+# accounts have ~12-15 gaps, so 12 covers almost all of them.
+MAX_GAP_CATEGORIES_OFFERED = 12
 
 # Step 2 builds a *pool* of eligible products per gap; step 3 (the drafter)
 # picks the final few from it, with the customer in view.
@@ -121,7 +148,11 @@ MAX_GAPS_PER_ACCOUNT = 3   # a sample box is themed; don't pitch 8 categories
 # line deep in one of those tails can be missed. The durable fix for that is a
 # curated hero-line list per category from the sales team, not a bigger number.
 POOL_PER_GAP = 30          # eligible candidates handed to the drafter per gap
-MAX_CHOSEN_PRODUCTS = 3    # how many the drafter may actually pitch per account
+# The drafter shortlists up to this many products per account — a menu of
+# options for the human running the campaign to pick the final box from, not a
+# fixed box. Favour a spread across categories over near-duplicates (see the
+# rushtons-product-selection skill). Client feedback 2026-07-14.
+MAX_CHOSEN_PRODUCTS = 5
 
 # Internal / non-customer accounts, detected from the customer name.
 INTERNAL_NAME_KEYWORDS = [

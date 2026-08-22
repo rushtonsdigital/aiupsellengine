@@ -80,3 +80,28 @@ Notes:
 - Tests: `rushtons_engine\.venv\Scripts\python.exe -m pytest -q` (run from
   `rushtons_engine/`); regression suite needs `REGRESSION_DATA_DIR` set to the
   folder with the June exports.
+
+## Business intelligence / data questions
+
+Separate from the weekly upsell run, the engine has a read-only **reporting
+layer** for BI reports and ad-hoc data questions:
+
+- `reporting.py` refreshes three summary tables each weekly run
+  (`customer_category_metrics`, `product_metrics`,
+  `recommendation_category_facts`) in the same style as `metrics.recompute`.
+- `reporting.sql` defines Postgres **views** (`v_order_lines`,
+  `v_monthly_customer_sales`, `v_category_penetration`, `v_account_gaps`,
+  `v_customer_health`, `v_lapsing_accounts`, `v_recommendation_funnel`,
+  `v_product_performance`), applied by `db.apply_reporting_views` — **Postgres
+  only** (guarded in `init_db`; the SQLite dev/test fallback skips them).
+- **Predefined reports** are served by Metabase (off-the-shelf) connected to
+  Supabase via a read-only `rushtons_readonly` role — an operational setup,
+  not code. See the plan and the `rushtons-analytics` skill for the role SQL.
+- **Ad-hoc data questions** (a chat with the data) are answered from a Claude
+  Code session: load the **`rushtons-analytics`** skill and query through
+  `rushtons_engine/query.py::run_sql` (read-only; SELECT-only; auto-LIMIT).
+- Two hard caveats the skill enforces: every measure is **volume, not revenue**
+  (there is no price data), and `quantity` must **never be summed across
+  products** (mixed `qty_type`). Headline on order/line counts.
+- New env var `REPORTING_DATABASE_URL` (in `.env`) holds the read-only role's
+  connection string; it falls back to `DATABASE_URL` on local SQLite.

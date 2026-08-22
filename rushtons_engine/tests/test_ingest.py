@@ -51,6 +51,33 @@ def test_non_invoiced_states_are_skipped(conn, tmp_path):
     assert ingest.ingest_orders_file(conn, path) == 1
 
 
+def test_order_state_casing_is_normalised(conn, tmp_path):
+    """Fresho switched 'Invoiced' -> 'invoiced' in Aug 2026 exports. Lowercase
+    must still count, and store canonically so downstream IN() filters match
+    both old and new data. 'accepted' (not yet invoiced) is still excluded."""
+    lower = LINE.replace("Invoiced", "invoiced")
+    accepted = LINE.replace("Invoiced", "accepted")
+    path = write_daily(tmp_path, "by_customer_2026-08-01.csv", [lower, accepted])
+    assert ingest.ingest_orders_file(conn, path) == 1   # accepted skipped
+    stored = conn.execute(sa.select(db.orders.c.order_state)).scalars().all()
+    assert stored == ["Invoiced"]                       # canonical spelling
+
+
+def test_product_master_tracks_delisted(conn, tmp_path):
+    june = ("S050. Fruits - SPLIT,'3080-KG',Clementines,Kg,2.0,,,supplied,ROUTE 1,"
+            "Cafe One,'C ONE',addr,54000002,2026-06-02,Invoiced,,")
+    later = ("Z999. Delisted,'3080-KG',Clementines,Kg,1.0,,,supplied,ROUTE 1,"
+             "Cafe One,'C ONE',addr,54000003,2026-08-01,invoiced,,")
+    ingest.ingest_orders_file(
+        conn, write_daily(tmp_path, "by_customer_2026-06-02.csv", [june]))
+    ingest.ingest_orders_file(
+        conn, write_daily(tmp_path, "by_customer_2026-08-01.csv", [later]))
+    p = conn.execute(sa.select(db.products)
+                     .where(db.products.c.product_code == "3080-KG")).fetchone()
+    assert p.category == "Fruits"          # keeps last informative group
+    assert p.delisted is True              # but knows it's parked in Z999 now
+
+
 def test_product_master_tracks_out_of_season(conn, tmp_path):
     june = ("S050. Fruits - SPLIT,'3080-KG',Clementines,Kg,2.0,,,supplied,ROUTE 1,"
             "Cafe One,'C ONE',addr,54000002,2026-06-02,Invoiced,,")
@@ -64,6 +91,17 @@ def test_product_master_tracks_out_of_season(conn, tmp_path):
                      .where(db.products.c.product_code == "3080-KG")).fetchone()
     assert p.category == "Fruits"          # keeps last informative group
     assert p.out_of_season is True         # but knows it's parked in Z888 now
+
+
+def test_unknown_customer_is_stubbed_and_flagged_new(conn, tmp_path):
+    """An order for a customer absent from the master creates a stub flagged
+    'new (auto)' so the team knows to look up and set its venue type."""
+    path = write_daily(tmp_path, "by_customer_2026-06-02.csv", [LINE])
+    ingest.ingest_orders_file(conn, path)
+    c = conn.execute(sa.select(db.customers)
+                     .where(db.customers.c.customer_code == "C ONE")).fetchone()
+    assert c.account_stage == "new (auto)"
+    assert c.venue_type is None            # unknown until a human reviews it
 
 
 def test_tag_parsing():

@@ -37,6 +37,7 @@ import draft
 import export
 import ingest
 import metrics
+import reporting
 import selector as selection
 
 log = logging.getLogger("run_weekly")
@@ -67,26 +68,39 @@ def run(data_dir: Path, drafts_file: Path | None = None,
 
         as_of = selection.as_of_date(conn)
         metrics.recompute(conn)
+        reporting.refresh_sales(conn, as_of)   # BI: category + product summaries
         classify.classify_all(conn, as_of)
         recs = selection.select_top(conn, run_date=as_of)
         if not recs:
             sys.exit("No candidates selected - check thresholds in config.py")
         _attach_bands(conn, recs)
 
+        review = None
         if drafts_file is not None:
             draft.apply_drafts(conn, drafts_file, recs)
         else:
             draft.export_brief(recs, as_of)
             for rec in recs:
                 rec["drafts"] = draft.pending_placeholder()
+            review = selection.customers_needing_review(conn)
+            export.write_new_customers_review(
+                review, as_of, selected_codes=[r["customer_code"] for r in recs])
 
+        # BI: rebuild the upsell funnel facts after recommendations/comms are
+        # persisted by either branch above.
+        reporting.refresh_funnel(conn)
         path = export.write_tracker(recs, as_of)
 
     print(f"\nRun date (from data): {as_of}")
     print(f"Selected {len(recs)} accounts:")
     for rec in recs:
         print(f"  {rec['rank']:>2}. {rec['customer_name']:<40} "
-              f"score {rec['score']:<8} pitch: {', '.join(rec['gap_categories'])}")
+              f"score {rec['score']:<8} offered: {', '.join(rec['gap_categories'])}")
+    if review is not None:
+        new_auto = sum(1 for r in review if r["account_stage"] == "new (auto)")
+        print(f"\nNew customers to review (no known venue type): {len(review)} "
+              f"({new_auto} auto-created from orders) -> "
+              f"output/new_customers_to_review_{as_of}.csv")
     if drafts_file is None:
         print(f"\nNext: draft messages per output/drafting_brief_{as_of}.json, "
               f"save as output/drafts_{as_of}.json, then re-run with "
