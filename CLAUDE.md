@@ -21,6 +21,31 @@ nothing fits) is step 3's whole job. Ranking by popularity alone got this
 wrong — see `feedback-log.md` in the `rushtons-product-selection` skill for
 the client feedback (2026-07-14) that drove the split.
 
+## Working style — do the work, don't hand back instructions
+
+The user is **not very technical** and is time-poor. Default to **completing
+every step you are able to complete yourself**, end to end, rather than
+explaining how to do it. This includes running commands, git/GitHub operations
+via the `gh` CLI (create/merge PRs, branches), editing files, running the
+pipeline, and any diagnostics. Do these directly — don't write out a to-do list
+for the user to execute.
+
+Only hand a step back to the user when it **genuinely cannot be done from here**,
+and when you do, give the shortest possible click-by-click steps. Things that
+truly require the user:
+- entering a **password / secret** anywhere (never handle these — e.g. the DB
+  password in `.env`, GitHub Actions secrets);
+- actions needing a login/scope this session lacks (e.g. pushing files under
+  `.github/workflows/` needs a `workflow`-scoped token — do it via the GitHub
+  web UI instead, or have the user do it);
+- a **decision** only they can make (which Supabase project, whether to send
+  client-facing messages, etc.).
+
+Still confirm before **irreversible or outward-facing** actions (deleting data,
+pushing to `main`, sending anything to a client) — but once confirmed, carry the
+whole thing through yourself. When you finish, report what you did and what (if
+anything) is left for them, not a list of what they should go and do.
+
 ## Weekly update procedure
 
 When the user asks to "run the weekly update" (or similar):
