@@ -23,6 +23,12 @@ def _seed_catalogue(conn):
     add_product(conn, "DAI-2", name="Milk Whole", category="Dairy and Chilled")
     add_product(conn, "DAI-3", name="Yoghurt Greek", category="Dairy and Chilled",
                 out_of_season=True)
+    # delisted line: keeps its real category but must never be pitched
+    add_product(conn, "DAI-4", name="Cream Sour (discontinued)",
+                category="Dairy and Chilled", delisted=True)
+    # The specialty line nobody has bought recently — the whole reason the pool
+    # is sourced from the catalogue rather than from recent orders.
+    add_product(conn, "DAI-9", name="Cheese Baron Bigod", category="Dairy and Chilled")
     # background buyers so suggestions have popularity signal:
     add_customer(conn, "BG1")
     add_customer(conn, "BG2")
@@ -34,6 +40,24 @@ def _seed_catalogue(conn):
 def _classify_and_select(conn):
     classify.classify_all(conn, AS_OF)
     return sel.select_top(conn, run_date=AS_OF)
+
+
+def test_customers_needing_review(conn):
+    _seed_catalogue(conn)
+    add_customer(conn, "TYPED", venue_type="Restaurants")       # known type
+    weekly_orders(conn, "TYPED", ["VEG-1"], START, weeks=2)
+    add_customer(conn, "UNTYPED", venue_type=None)              # unknown type
+    weekly_orders(conn, "UNTYPED", ["VEG-1"], START, weeks=2)
+    add_customer(conn, "NOORDERS", venue_type=None)            # never ordered
+    add_customer(conn, "STAFF ACCOUNT", name="Staff Account",  # internal
+                 venue_type=None)
+    weekly_orders(conn, "STAFF ACCOUNT", ["VEG-1"], START, weeks=2)
+    classify.classify_all(conn, AS_OF)
+    review = {r["customer_code"] for r in sel.customers_needing_review(conn)}
+    assert "UNTYPED" in review           # trades, no known type -> review
+    assert "TYPED" not in review         # already typed
+    assert "NOORDERS" not in review      # never traded
+    assert "STAFF ACCOUNT" not in review  # internal / excluded
 
 
 def test_narrow_engaged_account_is_selected_wide_account_is_not(conn):
@@ -126,7 +150,7 @@ def test_golden_ranking(conn):
     assert [r["rank"] for r in results] == list(range(1, len(results) + 1))
 
 
-def test_gaps_follow_segment_focus_and_suggestions_are_in_season(conn):
+def test_gaps_follow_segment_focus_and_pool_is_in_season(conn):
     _seed_catalogue(conn)
     add_customer(conn, "REST", venue_type="Restaurants")
     weekly_orders(conn, "REST", ["VEG-1"], START, weeks=5)
@@ -134,12 +158,68 @@ def test_gaps_follow_segment_focus_and_suggestions_are_in_season(conn):
     rec = next(r for r in results if r["customer_code"] == "REST")
     # Restaurants focus leads with Dairy and Chilled (meeting-PDF priority)
     assert rec["gap_categories"][0] == "Dairy and Chilled"
-    assert len(rec["gap_categories"]) <= config.MAX_GAPS_PER_ACCOUNT
-    dairy = rec["suggested_products"]["Dairy and Chilled"]
+    assert len(rec["gap_categories"]) <= config.MAX_GAP_CATEGORIES_OFFERED
+    dairy = rec["product_pool"]["Dairy and Chilled"]
     codes = [p["code"] for p in dairy]
     assert "DAI-1" in codes          # most-bought recent product leads
-    assert "DAI-3" not in codes      # out_of_season never suggested
+    assert "DAI-3" not in codes      # out_of_season never enters the pool
+    assert "DAI-4" not in codes      # delisted never enters the pool
+    assert len(dairy) <= config.POOL_PER_GAP
     assert codes == sorted(codes, key=lambda c: (-next(p["buyers_14d"] for p in dairy if p["code"] == c), c))
+    # the drafter needs Fresho's own grouping to spot mislabelled categories
+    assert all("product_group" in p for p in dairy)
+
+
+def test_pool_surfaces_specialty_lines_nobody_bought_recently(conn):
+    """The bug that produced the Baby Cucumber / Baby Corn pitch: a pool built
+    from recent orders can only ever contain what's already selling, so the
+    low-volume specialty lines Rushton's most wants to push are invisible."""
+    _seed_catalogue(conn)
+    add_customer(conn, "REST", venue_type="Restaurants")
+    weekly_orders(conn, "REST", ["VEG-1"], START, weeks=5)
+    rec = next(r for r in _classify_and_select(conn) if r["customer_code"] == "REST")
+
+    dairy = rec["product_pool"]["Dairy and Chilled"]
+    baron = next(p for p in dairy if p["code"] == "DAI-9")
+    assert baron["buyers_14d"] == 0        # zero recent sales, still eligible
+    assert baron["name"] == "Cheese Baron Bigod"
+
+
+def test_pool_collapses_pack_formats_of_the_same_product(conn):
+    """1613-EA / 1613-CS-8 / 1613-CS-12 are one beetroot in three pack sizes —
+    the pitch is the product, not the pack."""
+    _seed_catalogue(conn)
+    add_product(conn, "5028-EA", name="Butter Unsalted", category="Dairy and Chilled")
+    add_product(conn, "5028-CS-8", name="Butter Unsalted", category="Dairy and Chilled")
+    add_customer(conn, "REST", venue_type="Restaurants")
+    weekly_orders(conn, "REST", ["VEG-1"], START, weeks=5)
+    rec = next(r for r in _classify_and_select(conn) if r["customer_code"] == "REST")
+
+    butter = [p for p in rec["product_pool"]["Dairy and Chilled"]
+              if p["name"] == "Butter Unsalted"]
+    assert len(butter) == 1
+
+
+def test_account_buying_one_pack_format_is_not_pitched_another(conn):
+    """Buying 1613-CS-8 means you buy that beetroot — don't pitch 1613-EA."""
+    _seed_catalogue(conn)
+    add_product(conn, "5138-EA", name="Cream Double", category="Dairy and Chilled")
+    add_product(conn, "5138-CS-8", name="Cream Double", category="Dairy and Chilled")
+    add_customer(conn, "REST", venue_type="Restaurants")
+    weekly_orders(conn, "REST", ["VEG-1"], START, weeks=5)
+    add_order(conn, "REST", "5138-CS-8", AS_OF - dt.timedelta(days=3))
+    rec = next(r for r in _classify_and_select(conn) if r["customer_code"] == "REST")
+
+    codes = [p["code"] for p in rec["product_pool"].get("Dairy and Chilled", [])]
+    assert "5138-EA" not in codes
+
+
+def test_base_code_leaves_non_fresho_codes_alone():
+    """Collapsing two genuinely different products would hide one from the pool."""
+    assert sel.base_code("1613-EA") == "1613"
+    assert sel.base_code("1613-CS-12") == "1613"
+    assert sel.base_code("1613") == "1613"
+    assert sel.base_code("DAI-1") == "DAI-1"      # not a Fresho sku — untouched
 
 
 def test_recommendations_persisted_idempotently(conn):

@@ -57,8 +57,8 @@ def read_order_rows(path: Path) -> tuple[list[dict], int]:
             raise ValueError(f"{path.name}: not a daily order export, "
                              f"missing columns {sorted(missing)}")
         for raw in reader:
-            state = (raw["Order State"] or "").strip()
-            if state not in config.COUNTED_ORDER_STATES:
+            state = config.canonical_order_state(raw["Order State"])
+            if state is None:
                 skipped += 1
                 continue
             group = (raw["Product Group"] or "").strip()
@@ -80,8 +80,8 @@ def read_order_rows(path: Path) -> tuple[list[dict], int]:
 
 
 def _upsert_products(conn, rows: list[dict]) -> None:
-    """Product master: latest informative (non-blank, non-Z888) group wins the
-    category; out_of_season reflects the latest group of any kind."""
+    """Product master: latest informative (non-blank, non-Z-status) group wins
+    the category; out_of_season / delisted reflect the latest group of any kind."""
     existing = {
         r.product_code: r
         for r in conn.execute(sa.select(db.products)).fetchall()
@@ -93,6 +93,7 @@ def _upsert_products(conn, rows: list[dict]) -> None:
             "product_name": row["product_name"],
             "raw_product_group": None,
             "out_of_season": False,
+            "delisted": False,
             "first_seen": row["delivery_date"],
             "last_seen": row["delivery_date"],
         })
@@ -101,9 +102,9 @@ def _upsert_products(conn, rows: list[dict]) -> None:
         p["first_seen"] = min(p["first_seen"], row["delivery_date"])
         if categories.is_informative(row["product_group"]):
             p["raw_product_group"] = row["product_group"]
-        p["out_of_season"] = (
-            (row["product_group"] or "").strip() == categories.OUT_OF_SEASON_GROUP
-        )
+        group = (row["product_group"] or "").strip()
+        p["out_of_season"] = group == categories.OUT_OF_SEASON_GROUP
+        p["delisted"] = group == categories.DELISTED_GROUP
 
     for code, p in by_code.items():
         prev = existing.get(code)
@@ -113,6 +114,7 @@ def _upsert_products(conn, rows: list[dict]) -> None:
             "raw_product_group": raw_group,
             "category": categories.to_category(raw_group or ""),
             "out_of_season": p["out_of_season"],
+            "delisted": p["delisted"],
             "last_seen": max(p["last_seen"], prev.last_seen) if prev else p["last_seen"],
             "first_seen": min(p["first_seen"], prev.first_seen) if prev else p["first_seen"],
             "updated_at": db.now_utc(),
@@ -133,10 +135,11 @@ def _ensure_customer_stubs(conn, rows: list[dict]) -> None:
         if row["customer_code"] not in known:
             stubs[row["customer_code"]] = row["customer_name"]
     for code, name in stubs.items():
-        log.warning("customer %s (%s) in orders but not in customer master; stub created",
-                    code, name)
+        log.warning("customer %s (%s) in orders but not in customer master; "
+                    "stub created, flagged 'new (auto)' for venue-type review", code, name)
         conn.execute(db.customers.insert().values(
-            customer_code=code, customer_name=name, updated_at=db.now_utc()))
+            customer_code=code, customer_name=name,
+            account_stage="new (auto)", updated_at=db.now_utc()))
 
 
 def ingest_orders_file(conn, path: Path) -> int:

@@ -1,15 +1,19 @@
 ---
 name: rushtons-comms
-description: Voice, tone and structure for drafting Rushton's WhatsApp customer outreach. Use whenever writing customer-facing messages for the Rushton's upsell engine (announcement / follow-up / post-box stages) — always load this before drafting, never rely on memory of past tone rules.
+description: Voice, tone and structure for writing Rushton's WhatsApp customer outreach (step 4 — announcement / follow-up / post-box). Load this after products are chosen (see the rushtons-product-selection skill) to write the messages around them. Always load this before writing; never rely on memory of past tone rules.
 ---
 
-# Rushton's Customer Communications
+# Rushton's Customer Communications (step 4)
 
-Source of truth: `Rushtons_CS_Tone_Guidelines (1).md` (project root), received directly from
-the client 2026-07-08. If that file is ever updated, re-derive this skill from it — don't let
+This is the second of your two jobs in the weekly run: **write the messages** around the products
+already chosen in step 3 (see the `rushtons-product-selection` skill). Write around those picks and
+nothing else — if a gap category was dropped, it doesn't appear in the message.
+
+Source of truth for tone: `Rushtons_CS_Tone_Guidelines (1).md` (project root), received directly
+from the client 2026-07-08. If that file is ever updated, re-derive this skill from it — don't let
 this summary drift out of sync with the original.
 
-Before drafting anything, also read `feedback-log.md` in this folder — it holds corrections and
+Before writing anything, also read `feedback-log.md` in this folder — it holds tone corrections and
 confirmations from the client that are more recent than this file and take priority over it.
 
 ## Voice

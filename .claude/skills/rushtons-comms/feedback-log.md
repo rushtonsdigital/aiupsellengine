@@ -1,8 +1,9 @@
-# Feedback Log
+# Comms Feedback Log
 
-Dated record of client corrections and confirmations about comms tone/voice. Entries here
-override anything in `SKILL.md` that predates them — always check this file for the latest
-guidance before drafting, don't rely on `SKILL.md` alone once it's out of sync.
+Dated record of the client's corrections about comms tone and voice. Entries here override anything
+in `SKILL.md` that predates them — always read this before writing, don't rely on `SKILL.md` alone
+once it's out of sync. (Feedback about *which products to pitch* lives in the separate
+`rushtons-product-selection` skill's own feedback log.)
 
 ## 2026-07-08 — Real tone guidelines received, superseding earlier assumptions
 

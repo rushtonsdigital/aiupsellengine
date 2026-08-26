@@ -25,11 +25,12 @@ def add_customer(conn, code, name=None, venue_type="Restaurants", active=True,
 
 
 def add_product(conn, code, name=None, category="Vegetables",
-                raw_group="S010. Vegetables - SPLIT", out_of_season=False):
+                raw_group="S010. Vegetables - SPLIT", out_of_season=False,
+                delisted=False):
     conn.execute(db.products.insert().values(
         product_code=code, product_name=name or f"Product {code}",
         raw_product_group=raw_group, category=category,
-        out_of_season=out_of_season, updated_at=db.now_utc()))
+        out_of_season=out_of_season, delisted=delisted, updated_at=db.now_utc()))
 
 
 _order_seq = {"n": 90000000}
