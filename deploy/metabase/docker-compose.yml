@@ -1,0 +1,52 @@
+# Rushton's BI — self-hosted Metabase (open-source, $0 licence).
+#
+# This is the FREE Metabase, not Metabase Cloud. Two containers:
+#   metabase     — the app (browse to http://<host>:3000)
+#   metabase-db  — Postgres holding Metabase's OWN config (dashboards, users).
+#                  This is NOT your data — your data stays in Supabase, added
+#                  as a read-only data source from the Metabase UI after setup.
+#
+# Usage:
+#   1. cp .env.example .env  and set METABASE_APP_DB_PASSWORD to anything strong
+#   2. docker compose up -d
+#   3. open http://<host>:3000 and create the admin login
+#   4. Add your data: Admin → Databases → Add → PostgreSQL (see README.md)
+#
+# Runs anywhere Docker runs — a ~$5/mo VPS, a free tier, or your own PC.
+
+services:
+  metabase:
+    image: metabase/metabase:latest
+    container_name: rushtons-metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabaseapp
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_APP_DB_PASSWORD:?set METABASE_APP_DB_PASSWORD in .env}
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  metabase-db:
+    image: postgres:16
+    container_name: rushtons-metabase-db
+    environment:
+      POSTGRES_DB: metabaseapp
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: ${METABASE_APP_DB_PASSWORD:?set METABASE_APP_DB_PASSWORD in .env}
+    volumes:
+      - metabase-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metabase -d metabaseapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  metabase-db-data:
