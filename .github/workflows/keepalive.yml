@@ -1,0 +1,18 @@
+# Supabase free-tier keepalive: pings the DB Mon + Thu so the project never
+# auto-pauses (~7 days idle). Needs repo secret SUPABASE_DB_URL.
+name: supabase-keepalive
+on:
+  schedule:
+    - cron: "0 6 * * 1,4"   # Mondays and Thursdays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database
+        run: |
+          sudo apt-get install -y -q postgresql-client >/dev/null
+          psql "$SUPABASE_DB_URL" -c "select count(*) from customers;"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
