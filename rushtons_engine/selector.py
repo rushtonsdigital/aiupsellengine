@@ -233,9 +233,11 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             continue
         if s["num_orders"] < config.MIN_ORDERS_EVER:
             continue
-        breadth = (len(skus.get(code, ())) if config.LOW_ORDER_METRIC == "sku"
-                   else len(cats.get(code, ())))
-        if breadth > config.LOW_ORDER_MAX:
+        sku_count = len(skus.get(code, ()))
+        cat_count = len(cats.get(code, set()))
+        breadth = sku_count if config.LOW_ORDER_METRIC == "sku" else cat_count
+        # Hard cutoff only when backfill is off; otherwise breadth just ranks.
+        if not config.BACKFILL_TO_TOP_N and breadth > config.LOW_ORDER_MAX:
             continue
         if code in cooldown:
             continue
@@ -249,11 +251,21 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             "customer_code": code, "customer": c, "stats": s,
             "gaps": gaps, "ordered_gaps": ordered_gaps, "score": score,
             "total_qty_rank": s["num_lines"],
+            "sku_count": sku_count, "cat_count": cat_count,
         })
 
-    # Total order: score desc -> order lines desc -> customer_code asc.
-    candidates.sort(key=lambda x: (-x["score"], -x["total_qty_rank"],
-                                   x["customer_code"]))
+    if config.BACKFILL_TO_TOP_N:
+        # Fill from the narrowest basket up: fewest SKUs, then fewest categories
+        # (most headroom), then engagement score, then order lines, then code.
+        # The <=LOW_ORDER_MAX "core" naturally leads; wider accounts backfill the
+        # rest of the ten.
+        candidates.sort(key=lambda x: (x["sku_count"], x["cat_count"],
+                                       -x["score"], -x["total_qty_rank"],
+                                       x["customer_code"]))
+    else:
+        # Total order: score desc -> order lines desc -> customer_code asc.
+        candidates.sort(key=lambda x: (-x["score"], -x["total_qty_rank"],
+                                       x["customer_code"]))
     top = candidates[:config.TOP_N]
 
     # Re-running select_top for a run_date that already has locked recommendations

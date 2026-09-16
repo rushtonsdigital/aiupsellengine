@@ -155,7 +155,10 @@ def classify_all(conn, as_of: date) -> None:
                 days_since, bool(c.active))
             venue = c.venue_type or "Unknown"
         band = bands.get(c.customer_code) if not internal else None
-        prestige = ("Excluded" if internal
+        excluded_trade = (c.customer_code in config.EXCLUDED_CUSTOMER_CODES
+                          or (c.account_stage or "").strip().lower()
+                          in config.EXCLUDED_ACCOUNT_STAGES)
+        prestige = ("Excluded" if internal or excluded_trade
                     else seed.get(c.customer_code)
                     or ("VIP" if band == "gold" else "Standard"))
         conn.execute(db.customers.update()

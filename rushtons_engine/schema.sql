@@ -134,3 +134,74 @@ create table if not exists recommendation_category_facts (
   rec_status    text,
   primary key (run_date, customer_code, category)
 );
+
+-- Contact PEOPLE per customer account — standard B2B CRM shape. Email drives
+-- the Outlook sync and mailto buttons; phone drives wa.me links; either may be
+-- absent. Sourced from the Fresho export, a CS sheet, or added on the
+-- dashboard's Accounts section (harvested from page state).
+create table if not exists customer_contacts (
+  id            bigserial primary key,
+  customer_code text references customers(customer_code),
+  name          text,
+  label         text,            -- role: 'chef', 'orders', 'accounts'…
+  email         text,            -- stored lowercase
+  phone         text,
+  unique (customer_code, email)
+);
+
+-- The interactions ledger: one row per touch with a customer, from any source.
+-- kind: assigned|whatsapp_sent|email_sent|email_in|email_out|note|ordered_again
+-- source: dashboard (one-tap logs, harvested weekly from the artifact state)
+--         outlook   (read-only mailbox sync; stores metadata, never bodies)
+--         system    (derived outcomes, e.g. ordered_again)
+-- source_id is the idempotency key (page event id / internet message id /
+-- derived outcome key) so every loader can re-run safely.
+create table if not exists interactions (
+  id            bigserial primary key,
+  customer_code text references customers(customer_code),
+  occurred_at   timestamptz not null,
+  kind          text not null,
+  summary       text,
+  actor         text,
+  source        text,
+  source_id     text unique,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_interactions_customer
+  on interactions(customer_code, occurred_at);
+
+-- CRM enrichment columns on customers (from the full Fresho master; see
+-- ingest.ingest_customers_file). Older masters leave them null.
+-- Applied to existing tables by db._migrate_customers_crm:
+--   legal_entity_name text, delivery_address text, billing_address text,
+--   delivery_run_code text, payment_term_days integer, pricing_level text,
+--   internal_notes text
+
+-- Marketing leads, mirrored weekly from the Google Sheet the n8n flow feeds.
+-- The sheet stays the source of truth for lead fields; matching + value
+-- enrichment live here (leads.py; Hannah's brief 2026-08-06). Volume-only
+-- value: there is still no price data anywhere.
+create table if not exists leads (
+  id            bigserial primary key,
+  source_id     text unique not null,   -- SessionID, else email|date hash
+  session_id    text,
+  name          text,
+  business      text,
+  email         text,                   -- lowercase
+  phone         text,
+  lead_source   text,
+  analysis      text,
+  notes         text,
+  submitted_at  date,
+  status        text,                   -- New|Contacted|Acquired|Discarded
+  rating_raw    text,
+  rating        int,                    -- normalised 1-5; null = unrated
+  type          text,
+  details       text,
+  excluded_reason text,                 -- non-null = excluded from KPIs (test rows etc.)
+  matched_customer_code text references customers(customer_code),
+  match_method  text,                   -- auto_name | auto_contact | manual
+  match_score   numeric,
+  matched_at    timestamptz,
+  updated_at    timestamptz
+);

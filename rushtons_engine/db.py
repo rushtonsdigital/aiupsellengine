@@ -31,6 +31,15 @@ customers = sa.Table(
     sa.Column("last_order_date", sa.Date),
     sa.Column("activity_status", sa.Text),
     sa.Column("size_band", sa.Text),
+    # CRM enrichment from the full Fresho master (ingest captures these when
+    # the export carries them; older masters simply leave them null).
+    sa.Column("legal_entity_name", sa.Text),
+    sa.Column("delivery_address", sa.Text),
+    sa.Column("billing_address", sa.Text),
+    sa.Column("delivery_run_code", sa.Text),
+    sa.Column("payment_term_days", sa.Integer),
+    sa.Column("pricing_level", sa.Text),
+    sa.Column("internal_notes", sa.Text),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
 )
 
@@ -162,6 +171,71 @@ recommendation_category_facts = sa.Table(
     sa.Column("rec_status", sa.Text),
 )
 
+# Contact PEOPLE per customer account — standard B2B CRM shape (name, role,
+# email, phone). Email drives the Outlook sync and mailto buttons; phone drives
+# wa.me links. Either may be absent, so the key is a surrogate id; (code, email)
+# stays unique where email is present.
+customer_contacts = sa.Table(
+    "customer_contacts", metadata,
+    sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"),
+              primary_key=True, autoincrement=True),
+    sa.Column("customer_code", sa.Text, sa.ForeignKey("customers.customer_code")),
+    sa.Column("name", sa.Text),
+    sa.Column("label", sa.Text),                     # role: chef, orders, accounts…
+    sa.Column("email", sa.Text),                     # stored lowercase
+    sa.Column("phone", sa.Text),
+    sa.UniqueConstraint("customer_code", "email", name="uq_contact_code_email"),
+)
+
+# The interactions ledger — one row per touch with a customer (see interactions.py).
+# source_id is the idempotency key so every loader can re-run safely.
+interactions = sa.Table(
+    "interactions", metadata,
+    sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"),
+              primary_key=True, autoincrement=True),
+    sa.Column("customer_code", sa.Text, sa.ForeignKey("customers.customer_code")),
+    sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("summary", sa.Text),
+    sa.Column("actor", sa.Text),
+    sa.Column("source", sa.Text),
+    sa.Column("source_id", sa.Text, unique=True),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+)
+sa.Index("idx_interactions_customer",
+         interactions.c.customer_code, interactions.c.occurred_at)
+
+# Marketing leads, mirrored weekly from the Google Sheet the n8n flow feeds
+# (the sheet stays the source of truth for lead fields; matching and value
+# enrichment live here — see leads.py and Hannah's brief 2026-08-06).
+leads = sa.Table(
+    "leads", metadata,
+    sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"),
+              primary_key=True, autoincrement=True),
+    sa.Column("source_id", sa.Text, unique=True, nullable=False),
+    sa.Column("session_id", sa.Text),
+    sa.Column("name", sa.Text),
+    sa.Column("business", sa.Text),
+    sa.Column("email", sa.Text),           # lowercase
+    sa.Column("phone", sa.Text),
+    sa.Column("lead_source", sa.Text),
+    sa.Column("analysis", sa.Text),
+    sa.Column("notes", sa.Text),
+    sa.Column("submitted_at", sa.Date),
+    sa.Column("status", sa.Text),          # New|Contacted|Acquired|Discarded
+    sa.Column("rating_raw", sa.Text),
+    sa.Column("rating", sa.Integer),       # normalised 1-5, null = unrated
+    sa.Column("type", sa.Text),
+    sa.Column("details", sa.Text),
+    sa.Column("excluded_reason", sa.Text), # non-null = out of reporting KPIs
+    sa.Column("matched_customer_code", sa.Text,
+              sa.ForeignKey("customers.customer_code")),
+    sa.Column("match_method", sa.Text),    # auto_name|auto_contact|manual
+    sa.Column("match_score", sa.Numeric),
+    sa.Column("matched_at", sa.DateTime(timezone=True)),
+    sa.Column("updated_at", sa.DateTime(timezone=True)),
+)
+
 _engine = None
 
 
@@ -176,12 +250,55 @@ def init_db(engine: sa.Engine | None = None) -> sa.Engine:
     """Create all tables if missing, then apply in-place column migrations.
     Safe to call every run."""
     engine = engine or get_engine()
+    _migrate_contacts(engine)     # may drop the old-shape table; before create_all
     metadata.create_all(engine)
     _migrate_recommendations(engine)
     _migrate_products(engine)
+    _migrate_customers_crm(engine)
     if engine.dialect.name == "postgresql":
         apply_reporting_views(engine)
     return engine
+
+
+_CUSTOMER_CRM_COLS = {
+    "legal_entity_name": "text", "delivery_address": "text",
+    "billing_address": "text", "delivery_run_code": "text",
+    "payment_term_days": "integer", "pricing_level": "text",
+    "internal_notes": "text",
+}
+
+
+def _migrate_customers_crm(engine: sa.Engine) -> None:
+    """Add the CRM enrichment columns to an existing customers table.
+    ALTER ADD COLUMN is supported by SQLite 3.25+ and Postgres; no-op once
+    the columns exist."""
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("customers"):
+        return
+    cols = {c["name"] for c in inspector.get_columns("customers")}
+    todo = [(n, t) for n, t in _CUSTOMER_CRM_COLS.items() if n not in cols]
+    if not todo:
+        return
+    with engine.begin() as conn:
+        for name, typ in todo:
+            conn.execute(sa.text(f"alter table customers add column {name} {typ}"))
+
+
+def _migrate_contacts(engine: sa.Engine) -> None:
+    """Recreate customer_contacts in the CRM shape (surrogate id + name/phone).
+
+    The first shape was keyed (customer_code, email), which cannot hold a
+    phone-only contact. At migration time the table held only the disposable
+    test-address rows (label='test'), so a drop-and-recreate is safe; contacts
+    are reloaded via interactions.py. No-op once the new shape exists.
+    """
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("customer_contacts"):
+        return
+    cols = {c["name"] for c in inspector.get_columns("customer_contacts")}
+    if "phone" not in cols:
+        with engine.begin() as conn:
+            conn.execute(sa.text("drop table customer_contacts"))
 
 
 def apply_reporting_views(engine: sa.Engine) -> None:

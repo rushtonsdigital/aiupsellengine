@@ -26,16 +26,19 @@ WHO was selected, or pitch a product that wasn't in that account's pool.
 import argparse
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import sqlalchemy as sa
 
 import classify
 import config
+import dashboard
 import db
 import draft
 import export
 import ingest
+import interactions
 import metrics
 import reporting
 import selector as selection
@@ -51,7 +54,7 @@ def _attach_bands(conn, recs):
 
 
 def run(data_dir: Path, drafts_file: Path | None = None,
-        skip_ingest: bool = False) -> Path:
+        skip_ingest: bool = False, run_date=None) -> Path:
     engine = db.init_db()
     with engine.begin() as conn:
         if not skip_ingest and drafts_file is None:
@@ -66,7 +69,11 @@ def run(data_dir: Path, drafts_file: Path | None = None,
             total = sum(ingest.ingest_orders_file(conn, f) for f in order_files)
             log.info("ingested %d order lines from %d files", total, len(order_files))
 
-        as_of = selection.as_of_date(conn)
+        # as_of anchors the whole run (cooldown window, seasonality, activity,
+        # and the date stamped on the brief/tracker). Defaults to the latest
+        # delivery date in the data; --run-date overrides it so a report pulled
+        # midweek can still be produced "as of" the Monday cadence date.
+        as_of = run_date or selection.as_of_date(conn)
         metrics.recompute(conn)
         reporting.refresh_sales(conn, as_of)   # BI: category + product summaries
         classify.classify_all(conn, as_of)
@@ -90,6 +97,19 @@ def run(data_dir: Path, drafts_file: Path | None = None,
         # persisted by either branch above.
         reporting.refresh_funnel(conn)
         path = export.write_tracker(recs, as_of)
+
+    # BI: derive outreach outcomes, then rebuild the client-facing commercial
+    # dashboard from the refreshed reporting layer. Outside the transaction —
+    # a failure here must never roll back the week's run.
+    try:
+        with engine.begin() as conn:
+            interactions.derive_order_outcomes(conn)
+        dash_path = dashboard.write(as_of)
+        log.info("commercial dashboard rebuilt: %s "
+                 "(republish it to the Artifact URL to update the client link)",
+                 dash_path)
+    except Exception:
+        log.exception("commercial dashboard build failed - run is otherwise complete")
 
     print(f"\nRun date (from data): {as_of}")
     print(f"Selected {len(recs)} accounts:")
@@ -118,10 +138,15 @@ def main():
                              "regenerate the tracker (skips ingest)")
     parser.add_argument("--skip-ingest", action="store_true",
                         help="run selection on already-ingested data")
+    parser.add_argument("--run-date", type=lambda s: datetime.strptime(s, "%Y-%m-%d").date(),
+                        default=None,
+                        help="stamp the run 'as of' this date (YYYY-MM-DD) instead "
+                             "of the latest delivery date; e.g. a Monday cadence date")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    run(args.data_dir, drafts_file=args.drafts, skip_ingest=args.skip_ingest)
+    run(args.data_dir, drafts_file=args.drafts, skip_ingest=args.skip_ingest,
+        run_date=args.run_date)
 
 
 if __name__ == "__main__":

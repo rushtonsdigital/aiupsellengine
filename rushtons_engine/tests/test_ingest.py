@@ -51,6 +51,23 @@ def test_non_invoiced_states_are_skipped(conn, tmp_path):
     assert ingest.ingest_orders_file(conn, path) == 1
 
 
+def test_delivery_charge_lines_are_dropped(conn, tmp_path):
+    """Delivery Charge (code 15) is a fee, not produce - dropped at ingest so
+    courier/delivery-only accounts never enter the system or become candidates."""
+    charge = ("S. Miscellaneous,'15',Delivery Charge,Each,1.0,,,supplied,2ND,"
+              "SMOBRO Some Venue,'C SMOKTEST',addr,54000010,2026-06-02,Invoiced,,")
+    path = write_daily(tmp_path, "by_customer_2026-06-02.csv", [LINE, charge])
+    assert ingest.ingest_orders_file(conn, path) == 1  # LINE kept, charge dropped
+    # the delivery-only customer must not even get a stub
+    stub = conn.execute(sa.select(db.customers)
+                        .where(db.customers.c.customer_code == "C SMOKTEST")).fetchone()
+    assert stub is None
+    # and no Delivery Charge product is created
+    prod = conn.execute(sa.select(db.products)
+                        .where(db.products.c.product_code == "15")).fetchone()
+    assert prod is None
+
+
 def test_order_state_casing_is_normalised(conn, tmp_path):
     """Fresho switched 'Invoiced' -> 'invoiced' in Aug 2026 exports. Lowercase
     must still count, and store canonically so downstream IN() filters match

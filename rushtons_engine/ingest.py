@@ -46,10 +46,10 @@ def _parse_date(value: str) -> date:
     return datetime.strptime(value.strip(), "%Y-%m-%d").date()
 
 
-def read_order_rows(path: Path) -> tuple[list[dict], int]:
-    """Parse a daily export. Returns (rows, skipped_state_count).
+def read_order_rows(path: Path) -> tuple[list[dict], int, int]:
+    """Parse a daily export. Returns (rows, skipped_state_count, skipped_fee_count).
     Raises UnknownProductGroupError on any unmapped product group."""
-    rows, skipped = [], 0
+    rows, skipped, skipped_fee = [], 0, 0
     with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
         reader = csv.DictReader(fh)
         missing = set(ORDER_COLUMNS) - set(reader.fieldnames or [])
@@ -61,13 +61,17 @@ def read_order_rows(path: Path) -> tuple[list[dict], int]:
             if state is None:
                 skipped += 1
                 continue
+            product_code = _clean_code(raw["Product Code"])
+            if product_code in config.NON_PRODUCT_CODES:
+                skipped_fee += 1  # delivery charge / fee line — never enters the system
+                continue
             group = (raw["Product Group"] or "").strip()
             categories.to_category(group)  # strict validation, raises on unknown
             rows.append({
                 "order_number": int(raw["Order Number"].strip()),
                 "customer_code": _clean_code(raw["Customer Code"]),
                 "customer_name": (raw["Customer Name"] or "").strip(),
-                "product_code": _clean_code(raw["Product Code"]),
+                "product_code": product_code,
                 "product_name": (raw["Product Name"] or "").strip(),
                 "product_group": group,
                 "delivery_date": _parse_date(raw["Delivery Date"]),
@@ -76,7 +80,7 @@ def read_order_rows(path: Path) -> tuple[list[dict], int]:
                 "order_state": state,
                 "delivery_run": (raw["Delivery Run"] or "").strip(),
             })
-    return rows, skipped
+    return rows, skipped, skipped_fee
 
 
 def _upsert_products(conn, rows: list[dict]) -> None:
@@ -144,10 +148,13 @@ def _ensure_customer_stubs(conn, rows: list[dict]) -> None:
 
 def ingest_orders_file(conn, path: Path) -> int:
     """Idempotently (re-)ingest one daily export. Returns inserted line count."""
-    rows, skipped = read_order_rows(path)
+    rows, skipped, skipped_fee = read_order_rows(path)
     if skipped:
         log.warning("%s: skipped %d lines with order_state outside %s",
                     path.name, skipped, sorted(config.COUNTED_ORDER_STATES))
+    if skipped_fee:
+        log.warning("%s: dropped %d non-produce fee lines (codes %s)",
+                    path.name, skipped_fee, sorted(config.NON_PRODUCT_CODES))
     _ensure_customer_stubs(conn, rows)
     _upsert_products(conn, rows)
     conn.execute(db.orders.delete().where(db.orders.c.source_file == path.name))
@@ -217,6 +224,18 @@ def ingest_customers_file(conn, path: Path) -> int:
                 "raw_tags": (raw[cols["tags"]] or "").strip(),
                 "updated_at": db.now_utc(),
             }
+            # CRM enrichment — captured when the master carries the column,
+            # skipped (leaving any existing value) when it doesn't.
+            for field in ("legal_entity_name", "delivery_address",
+                          "billing_address", "pricing_level", "internal_notes"):
+                if field in cols:
+                    values[field] = (raw[cols[field]] or "").strip() or None
+            if "delivery_run_code" in cols:
+                values["delivery_run_code"] = \
+                    _clean_code(raw[cols["delivery_run_code"]]) or None
+            if "payment_term_days" in cols:
+                term = (raw[cols["payment_term_days"]] or "").strip()
+                values["payment_term_days"] = int(term) if term.isdigit() else None
             if code in known:
                 conn.execute(db.customers.update()
                              .where(db.customers.c.customer_code == code)

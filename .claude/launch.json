@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "control-centre",
+      "runtimeExecutable": "C:\\GoodBytes Control Centre\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["C:\\GoodBytes Control Centre\\app.py"],
+      "port": 8765
+    }
+  ]
+}

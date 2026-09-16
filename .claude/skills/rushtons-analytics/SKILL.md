@@ -113,6 +113,15 @@ Key dimensions: `size_band` (gold/silver/bronze), `activity_status`
   from v_lapsing_accounts limit 25
   ```
 
+## Named reports — see the commercial playbook
+
+Repeatable, named reports (win-back priority, silent decline, peer gaps, rep
+scorecard) live in the **`rushtons-commercial-plays`** skill, with their exact
+queries, chart specs and the action each one drives. Load that skill when the
+user asks for one by name, asks how to grow existing accounts, or wants a
+commercial/board review. Keep *this* skill for ad-hoc questions, and add new
+named reports there rather than here.
+
 ## When you answer
 
 - Lead with the answer in plain English; show a small table only if it helps.

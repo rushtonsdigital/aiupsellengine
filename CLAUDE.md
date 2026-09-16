@@ -130,3 +130,47 @@ layer** for BI reports and ad-hoc data questions:
   products** (mixed `qty_type`). Headline on order/line counts.
 - New env var `REPORTING_DATABASE_URL` (in `.env`) holds the read-only role's
   connection string; it falls back to `DATABASE_URL` on local SQLite.
+- **Commercial plays**: the `rushtons-commercial-plays` skill holds four named
+  reports (silent decline, win-back, peer gaps, rep scorecard) with their exact
+  queries, chart specs and the action each drives. Load it when asked how to
+  grow existing accounts or for a commercial/board review.
+- **Client dashboard**: `dashboard.py` renders those four plays as a
+  self-contained, interactive HTML page (`output/commercial_dashboard.html`),
+  rebuilt automatically at the end of every `run_weekly.py` run. Accounts expand
+  to a drill-down (13-week sparkline, categories they stopped buying, never-
+  bought gaps), carry copy-ready outreach drafts, and can be assigned to a rep —
+  the page saves assignments back into itself via the `artifact` capability, so
+  they are shared with everyone who opens the link.
+  It cannot query Supabase live (the Artifact sandbox blocks external
+  connections); it is regenerated weekly instead, matching the ingest cadence.
+  **After a run, republish it to the same Artifact URL** so the client's link
+  shows the new numbers (publish the same file path, or pass the existing
+  artifact `url` from a new session), and pass `capabilities: {"artifact": {}}`
+  so assignment keeps working.
+- **Outreach drafts**: `output/outreach_drafts.json`, keyed by `customer_code`,
+  is written **by Claude against the `rushtons-comms` skill** — never by Python,
+  which must not invent customer-facing words. Regenerate it each week for the
+  accounts then on the board; `dashboard.py` shows "draft pending" for any
+  account without one. Silent-decline drafts deliberately never mention the drop
+  in orders — that signal is for the rep, not the customer.
+- **Interactions ledger** (`interactions.py` + `interactions` /
+  `customer_contacts` tables): every touch with a customer — dashboard one-tap
+  logs ("Mark WhatsApp sent", notes, assignments), Outlook email metadata, and
+  derived `ordered_again` outcomes. All loaders are idempotent via `source_id`.
+  The dashboard's suggested-actions pane and per-account timeline read from it.
+  Weekly rhythm around a run (see the `rushtons-commercial-plays` skill for the
+  full procedure): (1) fetch the published dashboard's state (WebFetch the
+  artifact URL, extract the `dash-state` JSON) and `python interactions.py
+  harvest state.json`; (2) optional Outlook sync — Claude searches the
+  connected mailbox via the Microsoft MCP connector for mail to/from addresses
+  in `customer_contacts` (Python cannot call MCP), writes events JSON, loads
+  with `python interactions.py emails events.json`; (3) `run_weekly.py` (also
+  derives outcomes); (4) rebuild the dashboard **with the harvested state**
+  (`dashboard.write(state=...)` — a plain rebuild would reset assignments and
+  open actions) and republish to the same artifact URL.
+  Email sync stores metadata only (direction/date/subject/counterparty), never
+  bodies. `customer_contacts` is empty until contact data arrives (Fresho
+  export or a CS sheet: `python interactions.py contacts file.csv`).
+- Performance note: the summary tables answer in ~100ms and the whole dashboard
+  builds in ~1s. `v_order_lines` scans all order lines (~9s) — use it for
+  drill-down only, never for aggregates.

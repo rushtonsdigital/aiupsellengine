@@ -60,15 +60,33 @@ def test_customers_needing_review(conn):
     assert "STAFF ACCOUNT" not in review  # internal / excluded
 
 
-def test_narrow_engaged_account_is_selected_wide_account_is_not(conn):
+def test_narrow_accounts_lead_wide_accounts_backfill(conn):
+    """With BACKFILL_TO_TOP_N on (default), wide accounts are no longer hard-cut
+    at LOW_ORDER_MAX - they backfill the weekly ten *below* the narrower ones,
+    so the list always fills. The narrower basket still leads."""
     _seed_catalogue(conn)
-    add_customer(conn, "NARROW")   # 2 SKUs, weekly cadence -> candidate
+    add_customer(conn, "NARROW")   # 2 SKUs
     weekly_orders(conn, "NARROW", ["VEG-1", "FRU-1"], START, weeks=5)
-    add_customer(conn, "WIDE")     # >4 SKUs -> filtered
+    add_customer(conn, "WIDE")     # 5 SKUs
     weekly_orders(conn, "WIDE", ["VEG-1", "VEG-2", "FRU-1", "DAI-1", "DAI-2"],
                   START, weeks=5)
     results = _classify_and_select(conn)
     codes = [r["customer_code"] for r in results]
+    assert "NARROW" in codes and "WIDE" in codes          # both make the ten
+    assert codes.index("NARROW") < codes.index("WIDE")    # narrowest leads
+
+
+def test_hard_cutoff_restored_when_backfill_off(conn, monkeypatch):
+    """With BACKFILL_TO_TOP_N off, the old hard cutoff at LOW_ORDER_MAX holds:
+    accounts wider than 4 SKUs are excluded outright."""
+    monkeypatch.setattr("config.BACKFILL_TO_TOP_N", False)
+    _seed_catalogue(conn)
+    add_customer(conn, "NARROW")
+    weekly_orders(conn, "NARROW", ["VEG-1", "FRU-1"], START, weeks=5)
+    add_customer(conn, "WIDE")
+    weekly_orders(conn, "WIDE", ["VEG-1", "VEG-2", "FRU-1", "DAI-1", "DAI-2"],
+                  START, weeks=5)
+    codes = [r["customer_code"] for r in _classify_and_select(conn)]
     assert "NARROW" in codes
     assert "WIDE" not in codes
 

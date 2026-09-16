@@ -83,6 +83,34 @@ def test_prestige_rules(conn, monkeypatch):
     assert prestige["PLAIN"] in ("Standard", "VIP")  # VIP only if banded gold
 
 
+def test_excluded_customer_codes_are_excluded(conn, monkeypatch):
+    """Hand-listed trade counterparties (wholesalers) get prestige='Excluded'
+    even though they buy real produce and look like normal accounts."""
+    monkeypatch.setattr("config.EXCLUDED_CUSTOMER_CODES", {"WHOLESALE"})
+    _setup_product(conn)
+    add_customer(conn, "WHOLESALE")
+    weekly_orders(conn, "WHOLESALE", ["P1"], AS_OF - dt.timedelta(days=6), weeks=1)
+    classify.classify_all(conn, AS_OF)
+    p = conn.execute(sa.select(db.customers.c.prestige)
+                     .where(db.customers.c.customer_code == "WHOLESALE")).scalar()
+    assert p == "Excluded"
+
+
+def test_market_customer_stage_is_excluded(conn):
+    """Accounts tagged with a trade account-stage ('market customer') are
+    excluded systematically, without needing a per-code entry."""
+    _setup_product(conn)
+    add_customer(conn, "TRADE")
+    conn.execute(db.customers.update()
+                 .where(db.customers.c.customer_code == "TRADE")
+                 .values(account_stage="market customer"))
+    weekly_orders(conn, "TRADE", ["P1"], AS_OF - dt.timedelta(days=6), weeks=1)
+    classify.classify_all(conn, AS_OF)
+    p = conn.execute(sa.select(db.customers.c.prestige)
+                     .where(db.customers.c.customer_code == "TRADE")).scalar()
+    assert p == "Excluded"
+
+
 def test_venue_normalisation():
     assert classify.normalize_venue_type("restaurant") == "Restaurants"
     assert classify.normalize_venue_type("members club") == "Members Club"

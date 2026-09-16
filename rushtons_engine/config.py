@@ -43,6 +43,21 @@ def canonical_order_state(state: str) -> str | None:
     """Canonical spelling if `state` is a counted state (case-insensitive), else None."""
     return _COUNTED_CANONICAL.get((state or "").strip().casefold())
 
+# --- non-produce lines (dropped at ingest) ------------------------------------
+# Fresho product codes that are NOT produce and must never enter the system: a
+# fee/admin line, not something Rushton's could pitch. 'Delivery Charge' (15) is
+# the important one: third-party courier/distributor accounts (Smokin' Brothers /
+# 'SMOBRO', FCC, FERM, Provenance, Fine Cheese Co) only ever carry a weekly
+# delivery charge and no produce, which made 67 phantom "engaged-but-narrow"
+# accounts flood the weekly selection. Dropping the line at ingest means those
+# accounts never get an order, never get a stub, and never become candidates.
+# Client instruction 2026-09-07: remove from current data and discard from all
+# future uploads. (Other Miscellaneous noise — VAT, Query Product, generic
+# 'Miscellaneous - X' catch-alls — is left for the team to rule on; see the
+# handover questions. Genuine produce mis-filed under Miscellaneous, e.g. Bobby
+# Beans, is NOT dropped.)
+NON_PRODUCT_CODES = {"15"}
+
 # --- activity status (decision 6) ---------------------------------------------
 LAPSED_DAYS = 7            # regular-cadence account with no order in 7 days -> lapsed
 LONG_LAPSED_DAYS = 21      # ... in 21 days -> long_lapsed
@@ -64,7 +79,37 @@ MIN_ORDERS_EVER = 2        # one-off buyers are not "engaged-but-narrow"
 COOLDOWN_WEEKS = 8         # do not re-recommend within this window
 TOP_N = 10
 
+# Fill the weekly TOP_N from the narrowest basket upward instead of hard-cutting
+# at LOW_ORDER_MAX. A hard <=4-SKU cutoff matched only ~4 accounts in the whole
+# base (real kitchens all buy more than 4 lines), so the list never filled.
+# With backfill the ultra-narrow accounts (<=LOW_ORDER_MAX) still lead, then we
+# widen: fewest distinct SKUs first, then fewest distinct CATEGORIES (most
+# cross-sell headroom), then engagement score. Every eligible account still
+# needs >=MIN_ORDERS_EVER orders, an active status, a gap to pitch, and to be
+# out of cooldown and off the exclusion list. Set False to restore the old
+# hard cutoff at LOW_ORDER_MAX. (Client direction 2026-09-07.)
+BACKFILL_TO_TOP_N = True
+
 EXCLUDED_VENUE_TYPES = {"Internal/Non-customer", "Manufacturing"}
+
+# Trade counterparties to exclude by hand: produce wholesalers / resellers that
+# buy from Rushton's but are NOT end kitchens, so a produce upsell never fits.
+# The selector can't tell these from Fresho data alone (they buy real produce).
+# classify.py forces prestige='Excluded' for these, which the selector drops.
+# Client-confirmed 2026-09-07: S. Thorogood & Sons (New Covent Garden / New
+# Spitalfields produce wholesaler). Extend as the team names more.
+EXCLUDED_CUSTOMER_CODES = {
+    "C THOROGOODCG",   # S. Thorogood & Sons Ltd
+    "C THOROGOODS",    # S Thorogood & Sons - New Spitalfields Market (F&W)
+}
+
+# Fresho account-stage tags that mark trade/wholesale buyers, not end kitchens.
+# 'market customer' = a New Covent Garden / New Spitalfields market trade buyer
+# (Primeur, Entremettier, La Sovrana, Vincenzo, Fermary, S. Thorogood...). These
+# buy real produce so the selector can't spot them by volume — classify.py forces
+# prestige='Excluded' for any account carrying one of these stages. Compared
+# case-insensitively. Client-confirmed 2026-09-07.
+EXCLUDED_ACCOUNT_STAGES = {"market customer"}
 
 # Ranking weights: score components are each normalised to 0..1 (see select.py).
 WEIGHT_ENGAGEMENT = 3.0    # orders per week, capped
