@@ -92,6 +92,23 @@ BACKFILL_TO_TOP_N = True
 
 EXCLUDED_VENUE_TYPES = {"Internal/Non-customer", "Manufacturing"}
 
+# Split accounts: many pubs/hotels run their bar as a separate Fresho account
+# ("Prince Regent - Bar" beside "Prince Regent"). On its own a bar account
+# buys 4-5 categories, so it looks like the narrowest, gappiest basket in the
+# base and wins selection — on 2026-09-28 all ten picks were bar accounts whose
+# kitchen we already supply. When a name matches this suffix AND an account
+# with the bare name exists, the two are one venue: the bar's purchases count
+# towards the main account's gaps/pool, the bar never competes on its own, and
+# cooldown on either covers both. A bar with no matching main account is left
+# as a normal candidate.
+SPLIT_ACCOUNT_SUFFIX = r"\s*-\s*bar\s*$"   # case-insensitive
+# Name matching ignores case, a leading "The" and "Street"/"St". Pairs that
+# still don't match by name are listed by hand: {bar_code: main_code}.
+SPLIT_ACCOUNT_ALIASES = {
+    "C HAMBAR": "C HAM",        # Ham Yard Hotel - Bar -> - Main Kitchen
+    "C HAMEVBAR": "C HAMEV",    # Ham Yard Hotel - Event Bar -> - Event Kitchen
+}
+
 # Trade counterparties to exclude by hand: produce wholesalers / resellers that
 # buy from Rushton's but are NOT end kitchens, so a produce upsell never fits.
 # The selector can't tell these from Fresho data alone (they buy real produce).
