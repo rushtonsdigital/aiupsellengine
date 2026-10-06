@@ -98,13 +98,14 @@ def _recent_recommendations(conn, run_date: date) -> set[str]:
 
 def split_account_parents(custs: dict) -> dict[str, str]:
     """{bar_code: main_code} for split venues (see config.SPLIT_ACCOUNT_SUFFIX).
-    Matches on the bare name (ignoring case, a leading "The", Street/St), plus
-    config.SPLIT_ACCOUNT_ALIASES; an ambiguous bare name (two accounts share
-    it) is left unmerged rather than guessed at."""
+    Matches on the bare name (ignoring case, a leading "The", Street/St,
+    Limited/Ltd), plus config.SPLIT_ACCOUNT_ALIASES; an ambiguous bare name
+    (two accounts share it) is left unmerged rather than guessed at."""
     suffix = re.compile(config.SPLIT_ACCOUNT_SUFFIX, re.IGNORECASE)
 
     def norm(name: str) -> str:
         n = re.sub(r"^the\s+", "", name.strip().casefold())
+        n = re.sub(r"\blimited\b", "ltd", n)
         return re.sub(r"\bstreet\b", "st", n)
 
     by_name: dict[str, list[str]] = {}
