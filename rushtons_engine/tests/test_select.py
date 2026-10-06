@@ -135,10 +135,15 @@ def test_split_bar_account_folds_into_its_main_account(conn):
     weekly_orders(conn, "HOTEL", ["VEG-1", "VEG-2"], START, weeks=5)
     add_customer(conn, "HOTELBAR", name="Charlotte St Hotel - Bar")
     weekly_orders(conn, "HOTELBAR", ["FRU-1"], START, weeks=5)
+    add_customer(conn, "REST", name="Dorian Restaurant Ltd")
+    weekly_orders(conn, "REST", ["VEG-1", "VEG-2"], START, weeks=5)
+    add_customer(conn, "RESTBAR", name="Dorian Restaurant Limited - Bar Account")
+    weekly_orders(conn, "RESTBAR", ["FRU-1"], START, weeks=5)
     add_customer(conn, "LONEBAR", name="Lonely - Bar")
     weekly_orders(conn, "LONEBAR", ["FRU-1"], START, weeks=5)
     results = {r["customer_code"]: r for r in _classify_and_select(conn)}
     assert "PUBBAR" not in results and "HOTELBAR" not in results
+    assert "RESTBAR" not in results
     assert "LONEBAR" in results
     assert "Fruits" not in results["PUB"]["all_gaps"]   # bar already buys it
 
