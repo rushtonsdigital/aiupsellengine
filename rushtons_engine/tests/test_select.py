@@ -121,6 +121,41 @@ def test_cooldown_excludes_recently_recommended(conn):
     assert "REPEAT" not in codes
 
 
+def test_split_bar_account_folds_into_its_main_account(conn):
+    """'X - Bar' beside 'X' is one venue (2026-09-28: all ten picks were bar
+    accounts whose kitchen we already supply). The bar never competes on its
+    own, its purchases close the main account's gaps, and a bar with no main
+    account stays an ordinary candidate."""
+    _seed_catalogue(conn)
+    add_customer(conn, "PUB", name="The Crown")
+    weekly_orders(conn, "PUB", ["VEG-1", "VEG-2"], START, weeks=5)
+    add_customer(conn, "PUBBAR", name="The Crown - BAR")
+    weekly_orders(conn, "PUBBAR", ["FRU-1"], START, weeks=5)
+    add_customer(conn, "HOTEL", name="Charlotte Street Hotel")
+    weekly_orders(conn, "HOTEL", ["VEG-1", "VEG-2"], START, weeks=5)
+    add_customer(conn, "HOTELBAR", name="Charlotte St Hotel - Bar")
+    weekly_orders(conn, "HOTELBAR", ["FRU-1"], START, weeks=5)
+    add_customer(conn, "LONEBAR", name="Lonely - Bar")
+    weekly_orders(conn, "LONEBAR", ["FRU-1"], START, weeks=5)
+    results = {r["customer_code"]: r for r in _classify_and_select(conn)}
+    assert "PUBBAR" not in results and "HOTELBAR" not in results
+    assert "LONEBAR" in results
+    assert "Fruits" not in results["PUB"]["all_gaps"]   # bar already buys it
+
+
+def test_split_account_cooldown_covers_both_halves(conn):
+    _seed_catalogue(conn)
+    add_customer(conn, "PUB", name="The Crown")
+    weekly_orders(conn, "PUB", ["VEG-1"], START, weeks=5)
+    add_customer(conn, "PUBBAR", name="The Crown - Bar")
+    weekly_orders(conn, "PUBBAR", ["FRU-1"], START, weeks=5)
+    conn.execute(db.recommendations.insert().values(
+        run_date=AS_OF - dt.timedelta(weeks=2), customer_code="PUBBAR",
+        rank=1, status="sent", created_at=db.now_utc()))
+    codes = [r["customer_code"] for r in _classify_and_select(conn)]
+    assert "PUB" not in codes and "PUBBAR" not in codes
+
+
 def test_cooldown_does_not_block_same_day_rerun(conn):
     _seed_catalogue(conn)
     add_customer(conn, "TODAY")

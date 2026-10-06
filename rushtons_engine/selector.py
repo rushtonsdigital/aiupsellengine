@@ -96,6 +96,33 @@ def _recent_recommendations(conn, run_date: date) -> set[str]:
     return {r.customer_code for r in conn.execute(q)}
 
 
+def split_account_parents(custs: dict) -> dict[str, str]:
+    """{bar_code: main_code} for split venues (see config.SPLIT_ACCOUNT_SUFFIX).
+    Matches on the bare name (ignoring case, a leading "The", Street/St), plus
+    config.SPLIT_ACCOUNT_ALIASES; an ambiguous bare name (two accounts share
+    it) is left unmerged rather than guessed at."""
+    suffix = re.compile(config.SPLIT_ACCOUNT_SUFFIX, re.IGNORECASE)
+
+    def norm(name: str) -> str:
+        n = re.sub(r"^the\s+", "", name.strip().casefold())
+        return re.sub(r"\bstreet\b", "st", n)
+
+    by_name: dict[str, list[str]] = {}
+    for code, c in custs.items():
+        by_name.setdefault(norm(c.customer_name or ""), []).append(code)
+    parents = {}
+    for code, c in custs.items():
+        name = (c.customer_name or "").strip()
+        if not suffix.search(name):
+            continue
+        mains = by_name.get(norm(suffix.sub("", name)), [])
+        if len(mains) == 1 and mains[0] != code:
+            parents[code] = mains[0]
+    parents.update({b: m for b, m in config.SPLIT_ACCOUNT_ALIASES.items()
+                    if b in custs and m in custs})
+    return parents
+
+
 def detect_gaps(bought: set[str], venue_type: str) -> tuple[list[str], list[str]]:
     """Returns (all_targetable_gaps, ordered_gaps).
 
@@ -221,6 +248,14 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
     cooldown = _recent_recommendations(conn, as_of)
     custs = {c.customer_code: c for c in conn.execute(sa.select(db.customers))}
 
+    # One venue, two accounts: fold each bar account into its main account.
+    parents = split_account_parents(custs)
+    for bar, main in parents.items():
+        cats[main] = cats.get(main, set()) | cats.get(bar, set())
+        skus[main] = skus.get(main, set()) | skus.get(bar, set())
+        if bar in cooldown or main in cooldown:
+            cooldown |= {bar, main}
+
     span_days = (as_of - min(s["first_order"] for s in stats.values())).days + 1
     span_weeks = max(span_days / 7.0, 1.0)
 
@@ -239,7 +274,7 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         # Hard cutoff only when backfill is off; otherwise breadth just ranks.
         if not config.BACKFILL_TO_TOP_N and breadth > config.LOW_ORDER_MAX:
             continue
-        if code in cooldown:
+        if code in cooldown or code in parents:
             continue
         gaps, ordered_gaps = detect_gaps(cats.get(code, set()), c.venue_type)
         if not ordered_gaps:
