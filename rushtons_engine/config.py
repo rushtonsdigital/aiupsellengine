@@ -118,6 +118,14 @@ SPLIT_ACCOUNT_ALIASES = {
 EXCLUDED_CUSTOMER_CODES = {
     "C THOROGOODCG",   # S. Thorogood & Sons Ltd
     "C THOROGOODS",    # S Thorogood & Sons - New Spitalfields Market (F&W)
+    # Zepbrook: office-refreshments reseller delivering to its clients' offices
+    # (one buyer behind every site). Excluded 2026-10-06 at Jose's direction.
+    # New Zepbrook site codes must be added here by hand.
+    "R ZEPBROOK",      # Zepbrook Limited
+    "R ZEPMPCBURL",    # Zepbrook - Millennium Capital Partners, Old Burlington St
+    "R ZEPMPCBUCK",    # Zepbrook - Millennium Capital Partners, Buckingham Gate
+    "R ZEPMPCDUKE",    # Zepbrook - Millennium Capital Partners, Duke St
+    "R ZEPMPCRYD",     # Zepbrook - Millennium Capital Partners, Ryder St
 }
 
 # Fresho account-stage tags that mark trade/wholesale buyers, not end kitchens.
