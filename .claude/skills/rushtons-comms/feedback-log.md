@@ -23,3 +23,27 @@ important ways:
 
 **Action needed:** redraft the June 2026 comms (10 accounts × 3 stages) against `SKILL.md` and
 `examples.md` before the client meeting relies on them as representative.
+
+## 2026-10-09 — "Too AI": simpler, season-led, no dish suggestions (Laurence, client review)
+
+Laurence Copeman (Account Manager, who now sends the messages) at the 9 Oct review:
+the messages read as AI-written. What he wants instead, in his words: *"We're in
+the season of Delica squash - can we make you a sample box of that"* - i.e.
+**simple**: say what's in season (or what they're not getting from us) and offer the
+box. Specifically:
+
+- **No dish or menu suggestions.** Don't propose a new dish, special or recipe
+  ("a jaeger sauce for the schnitzel", "a squash and sage special"). Name the
+  produce and the season; the chef decides what to cook.
+- **Shorter and plainer.** One short line on the produce, one on the offer.
+  Drop flourishes ("made for", "cracking", "beautiful", "proper").
+- Keep: "Hi team", no sign-off, soft close.
+
+He'll send original-vs-rewritten pairs over the coming weeks; add the best to
+`examples.md` and revise this entry when they arrive. Laurence reviews every
+message before sending, so these are a baseline, not final copy.
+
+Also discussed (not yet a rule): if a customer doesn't reply to the sample-box
+offer, Rushton's may instead "pop a few items into their next order" with a
+separate samples invoice. Pending Harry confirming the invoice/night-team process
+- do NOT write that variant until it's confirmed.

@@ -291,3 +291,24 @@ def test_recommendations_persisted_idempotently(conn):
     stored = conn.execute(sa.select(db.recommendations)).fetchall()
     assert n == len({r.customer_code for r in stored if r.run_date == AS_OF})
 
+
+
+def test_client_exclusion_rules_2026_10(conn):
+    """Market-customer rep, excluded groups, FCC/SMOBRO delivery sites and dead
+    accounts never become candidates; a held group is skipped until its date."""
+    _seed_catalogue(conn)
+    specs = {"OKAY": {}, "MARKET": {"sales_rep": "Market Customer (Rushtons)"},
+             "URBAN": {"group_affiliation": "Urban Pubs & Bars"},
+             "PUBHOUSE": {"group_affiliation": "public house group"},
+             "FCCSITE": {"customer_name": "FCC Rinds & Vines"},
+             "SMOSITE": {"customer_name": "SMOBRO The Ned"},
+             "R ROBINRA": {}, "HELD": {"group_affiliation": "Clapham Leisure Group"}}
+    for code, vals in specs.items():
+        add_customer(conn, code)
+        if vals:
+            conn.execute(db.customers.update()
+                         .where(db.customers.c.customer_code == code).values(**vals))
+        weekly_orders(conn, code, ["VEG-1"], START, weeks=5)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "OKAY" in codes
+    assert not codes & (set(specs) - {"OKAY"})

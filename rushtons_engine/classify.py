@@ -17,6 +17,7 @@ against) rushtons_customer_classification.csv:
 
 import csv
 import logging
+import re
 import statistics
 from datetime import date
 from pathlib import Path
@@ -120,6 +121,18 @@ def customer_order_stats(conn) -> dict[str, dict]:
     return stats
 
 
+def is_excluded_by_rule(c) -> bool:
+    """Client exclusion rules from config: trade / delivery-on-behalf / group /
+    account-manager / dead accounts. Case-insensitive throughout."""
+    low = lambda v: (v or "").strip().casefold()
+    name = low(c.customer_name)
+    return (c.customer_code in config.EXCLUDED_CUSTOMER_CODES
+            or low(c.account_stage) in config.EXCLUDED_ACCOUNT_STAGES
+            or low(c.sales_rep) in config.EXCLUDED_SALES_REPS
+            or low(c.group_affiliation) in config.EXCLUDED_GROUPS
+            or any(re.match(p, name) for p in config.EXCLUDED_NAME_PATTERNS))
+
+
 def classify_all(conn, as_of: date) -> None:
     """Recompute activity_status, size_band, prestige, last_order_date for
     every customer. Deterministic for a given orders table and as_of date."""
@@ -155,9 +168,7 @@ def classify_all(conn, as_of: date) -> None:
                 days_since, bool(c.active))
             venue = c.venue_type or "Unknown"
         band = bands.get(c.customer_code) if not internal else None
-        excluded_trade = (c.customer_code in config.EXCLUDED_CUSTOMER_CODES
-                          or (c.account_stage or "").strip().lower()
-                          in config.EXCLUDED_ACCOUNT_STAGES)
+        excluded_trade = is_excluded_by_rule(c)
         prestige = ("Excluded" if internal or excluded_trade
                     else seed.get(c.customer_code)
                     or ("VIP" if band == "gold" else "Standard"))

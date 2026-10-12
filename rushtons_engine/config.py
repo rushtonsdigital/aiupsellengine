@@ -77,7 +77,7 @@ LOW_ORDER_METRIC = "sku"   # 'sku' now, flip to 'category' later (decision 2)
 LOW_ORDER_MAX = 4          # <=4 distinct SKUs/categories over history
 MIN_ORDERS_EVER = 2        # one-off buyers are not "engaged-but-narrow"
 COOLDOWN_WEEKS = 8         # do not re-recommend within this window
-TOP_N = 10
+TOP_N = 15                 # raised from 10 at the 2026-10-09 client review
 
 # Fill the weekly TOP_N from the narrowest basket upward instead of hard-cutting
 # at LOW_ORDER_MAX. A hard <=4-SKU cutoff matched only ~4 accounts in the whole
@@ -136,6 +136,31 @@ EXCLUDED_CUSTOMER_CODES = {
 # prestige='Excluded' for any account carrying one of these stages. Compared
 # case-insensitively. Client-confirmed 2026-09-07.
 EXCLUDED_ACCOUNT_STAGES = {"market customer"}
+
+# --- client exclusion rules, 2026-10-09 review + Hannah/Laurence emails -------
+# All compared case-insensitively; classify.py forces prestige='Excluded'.
+# Account manager (Fresho sales_rep). 'Market Customer' is Will's book of trade
+# accounts - Hannah: "All FCC, Market, and SMOKE should be under Will".
+EXCLUDED_SALES_REPS = {"market customer (rushtons)"}
+# Fresho group affiliation. Urban Pubs & Bars: centrally managed set menus, no
+# site-level upsell (Hannah 2026-09-28, Harry 2026-10-09). Public House Group
+# incl. Canteen: "don't want to touch right now" (Hannah 2026-10-09).
+# Hawksmoor: no longer a client (Laurence 2026-10-07).
+EXCLUDED_GROUPS = {"urban pubs & bars", "public house group", "hawksmoor"}
+# Account-name patterns (regex, from the start of the name): delivery sites
+# Rushton's serves ON BEHALF of Fine Cheese Co / Smokin' Brothers - not our
+# customers (Hannah 2026-09-01 and 2026-10-07). Some now carry produce lines,
+# so the ingest-time delivery-charge drop no longer catches them all.
+EXCLUDED_NAME_PATTERNS = [r"fcc\b", r"smobro\b", r"the fine cheese co\b",
+                          r"smokin'?\s+brothers\b"]
+# Single dead accounts: Robin's Ramen - residency ended June (Laurence 2026-10-07).
+EXCLUDED_CUSTOMER_CODES |= {"R ROBINRA"}
+
+# Groups being handled directly by the team, held out of selection until the
+# date given (a manual cooldown, not a permanent exclusion). Clapham Leisure:
+# sample boxes sent to all sites bar one and Laurence is meeting their exec
+# chef (2026-10-09 review) - 8 weeks from the boxes.
+GROUP_HOLD_UNTIL = {"clapham leisure group": "2026-11-30"}
 
 # Ranking weights: score components are each normalised to 0..1 (see select.py).
 WEIGHT_ENGAGEMENT = 3.0    # orders per week, capped
