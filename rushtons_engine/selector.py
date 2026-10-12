@@ -249,6 +249,12 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
     cooldown = _recent_recommendations(conn, as_of)
     custs = {c.customer_code: c for c in conn.execute(sa.select(db.customers))}
 
+    # Groups the team is handling directly are held out until a set date.
+    held = {g.casefold() for g, until in config.GROUP_HOLD_UNTIL.items()
+            if as_of < date.fromisoformat(until)}
+    cooldown |= {code for code, c in custs.items()
+                 if (c.group_affiliation or "").strip().casefold() in held}
+
     # One venue, two accounts: fold each bar account into its main account.
     parents = split_account_parents(custs)
     for bar, main in parents.items():

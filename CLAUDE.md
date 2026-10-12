@@ -6,13 +6,13 @@ The weekly run is four steps, and the split matters:
 
 | # | Who  | What                                                    |
 |---|------|---------------------------------------------------------|
-| 1 | code | selects **who** to target — the weekly 10 (`selector.py`) |
+| 1 | code | selects **who** to target — the weekly 15 (`selector.py`, `config.TOP_N`) |
 | 2 | code | selects **what is eligible** — a product pool per account |
 | 3 | AI   | picks the **final products** from that pool              |
 | 4 | AI   | writes the **WhatsApp messages** around them             |
 
 **Two boundaries, both enforced in `draft.py` — never work around them:**
-- The selected 10 are final. Never re-rank, add, drop or second-guess them.
+- The selected accounts are final. Never re-rank, add, drop or second-guess them.
 - The AI may only pitch products from that account's pool. Never invent a SKU.
 
 Inside those boundaries the AI's judgement is the point, not a liability:
@@ -58,7 +58,7 @@ When the user asks to "run the weekly update" (or similar):
    ```
    rushtons_engine\.venv\Scripts\python.exe rushtons_engine\run_weekly.py --data-dir <folder>
    ```
-   This ingests, classifies, selects the top 10, builds each account's
+   This ingests, classifies, selects the top 15 (after the exclusion rules in `config.py`), builds each account's
    eligible product pool, and writes
    `rushtons_engine/output/drafting_brief_<date>.json`.
 3. Two skills, one per AI step — load each (with its `feedback-log.md`, which
