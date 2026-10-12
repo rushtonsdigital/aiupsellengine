@@ -30,12 +30,14 @@ SUMMARY_COLS = [
     "Size Band", "Orders (month)", "SKUs", "Categories Bought",
     "Gap Categories (offered)", "Products Pitched", "Score",
     "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
+    "Simple - Announcement", "Simple - Follow-up", "Simple - Post-box",
     "Contact (phone)", "Valid Suggestion (Y/N)", "Approved (Y/N)", "Sent Date",
     "Customer Replied (Y/N)", "Box Sent (Y/N)", "Outcome", "Notes",
 ]
 SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 34, 8, 45, 45, 45,
-                     16, 12, 12, 12, 12, 12, 18, 30]
-WHATSAPP_COL_LABELS = ("WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box")
+                     45, 45, 45, 16, 12, 12, 12, 12, 12, 18, 30]
+WHATSAPP_COL_LABELS = ("WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
+                       "Simple - Announcement", "Simple - Follow-up", "Simple - Post-box")
 
 
 def _pitched(rec: dict) -> str:
@@ -134,6 +136,10 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
         messages = {"WhatsApp - Announcement": drafts.get("announcement", ""),
                    "WhatsApp - Follow-up": drafts.get("followup", ""),
                    "WhatsApp - Post-box": drafts.get("postbox", "")}
+        simple = rec.get("drafts_simple") or {}
+        messages.update({"Simple - Announcement": simple.get("announcement", ""),
+                         "Simple - Follow-up": simple.get("followup", ""),
+                         "Simple - Post-box": simple.get("postbox", "")})
         row_values = {
             "Rank": rec["rank"], "Customer Code": rec["customer_code"],
             "Customer Name": rec["customer_name"], "Venue Type": rec["venue_type"],
@@ -217,14 +223,21 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
         stage_labels = {"announcement": "1. WhatsApp opener",
                         "followup": "2. Follow-up (if no reply)",
                         "postbox": "3. Post-box check-in"}
-        for stage, label in stage_labels.items():
-            body = rec.get("drafts", {}).get(stage, "")
-            tab.cell(row=row, column=1, value=label).font = LABEL_FONT
-            cell = tab.cell(row=row, column=2, value=body)
-            cell.alignment = WRAP
-            tab.row_dimensions[row].height = max(30, 14 * (body.count("\n") + 2))
+        option_sets = [("drafts", "Option A - standard (with a dish idea)")]
+        if rec.get("drafts_simple"):
+            option_sets.append(("drafts_simple", "Option B - simpler (season + offer)"))
+        for key, heading in option_sets:
+            if len(option_sets) > 1:
+                tab.cell(row=row, column=1, value=heading).font = LABEL_FONT
+                row += 1
+            for stage, label in stage_labels.items():
+                body = rec.get(key, {}).get(stage, "")
+                tab.cell(row=row, column=1, value=label).font = LABEL_FONT
+                cell = tab.cell(row=row, column=2, value=body)
+                cell.alignment = WRAP
+                tab.row_dimensions[row].height = max(30, 14 * (body.count("\n") + 2))
+                row += 1
             row += 1
-        row += 1
         for label in ("Contact (phone)", "Valid suggestion (Y/N)", "Approved by",
                       "Sent date", "Customer replied (Y/N)", "Box sent (Y/N)",
                       "Outcome", "Notes"):
