@@ -84,6 +84,7 @@ join recent r on r.customer_code = p.customer_code
 join v_customer_health h on h.customer_code = p.customer_code
 where h.activity_status in ('active_regular','active_adhoc')
   and h.size_band in ('gold','silver') and p.o >= 6
+  and coalesce(h.prestige,'') <> 'Excluded'
   and (r.o - p.o)/nullif(p.o,0)::numeric <= -0.35
 order by (p.o - r.o) desc
 """
@@ -102,7 +103,7 @@ order by (h.size_band = 'gold') desc, v.total_lines desc nulls last
 
 _PEER_BASE = """
 with active as (
-  select customer_code, customer_name, venue_type, size_band, sales_rep
+  select customer_code, customer_name, venue_type, size_band, sales_rep, prestige
   from v_customer_health
   where activity_status in ('active_regular','active_adhoc') and venue_type is not null
     and venue_type not in ('Unknown','Manufacturing','Internal/Non-customer')),
@@ -123,6 +124,7 @@ join active a on a.venue_type = n.venue_type
 left join customer_category_metrics c
        on c.customer_code = a.customer_code and c.category = n.category
 where c.customer_code is null and n.pct >= 85 and a.size_band = 'gold'
+  and coalesce(a.prestige,'') <> 'Excluded'
 order by n.pct desc, a.customer_name
 """
 
@@ -133,6 +135,7 @@ join active a on a.venue_type = n.venue_type
 left join customer_category_metrics c
        on c.customer_code = a.customer_code and c.category = n.category
 where c.customer_code is null and n.pct >= 70 and a.size_band in ('gold','silver')
+  and coalesce(a.prestige,'') <> 'Excluded'
 """
 
 Q_HEATMAP = """
