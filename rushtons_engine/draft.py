@@ -72,14 +72,17 @@ INSTRUCTIONS = (
     "STEP 4 — write the messages. Load the rushtons-comms skill "
     "(.claude/skills/rushtons-comms/SKILL.md) and its feedback-log, then write "
     "the three WhatsApp messages (announcement, followup, postbox) around the "
-    "products you chose, per its tone guidance.\n\n"
+    "products you chose, per its tone guidance - TWO options per account: "
+    "`messages` (Option A, standard, may carry one dish idea) and "
+    "`messages_simple` (Option B, plain season-led offer, no dish idea).\n\n"
     "Save to drafts_{run_date}.json in this folder:\n"
     '{"<customer_code>": {\n'
     '   "customer_review": "what your web search found — venue, what they cook",\n'
     '   "chosen_products": [{"code": "...", "name": "...", "category": "...",\n'
     '                        "why": "why this fits this kitchen"}],\n'
     '   "data_notes": "optional — labelling/categorisation problems spotted",\n'
-    '   "messages": {"announcement": "...", "followup": "...", "postbox": "..."}\n'
+    '   "messages": {"announcement": "...", "followup": "...", "postbox": "..."},\n'
+    '   "messages_simple": {"announcement": "...", "followup": "...", "postbox": "..."}\n'
     "}, ...}\n\n"
     "Cover every account below exactly once. Do not add, drop or reorder "
     "accounts — the selection is code's call, not yours."
@@ -175,6 +178,11 @@ def _validate(drafts: dict, recommendations: list[dict]) -> None:
         empty = [s for s in STAGES if not (entry["messages"].get(s) or "").strip()]
         if empty:
             raise ValueError(f"{code}: empty or missing stages {empty}")
+        simple = entry.get("messages_simple")
+        if simple is not None:
+            empty = [s for s in STAGES if not (simple.get(s) or "").strip()]
+            if empty:
+                raise ValueError(f"{code}: messages_simple is missing stages {empty}")
 
 
 def apply_drafts(conn, drafts_path: Path, recommendations: list[dict]) -> int:
@@ -204,11 +212,25 @@ def apply_drafts(conn, drafts_path: Path, recommendations: list[dict]) -> int:
                 created_at=db.now_utc(),
             ))
             written += 1
+        # Optional second option (client 2026-10-12): a simpler, season-led
+        # version alongside the standard one, stored as '<stage>_simple'.
+        simple = entry.get("messages_simple")
+        for stage in STAGES if simple else ():
+            conn.execute(db.comms.insert().values(
+                recommendation_id=rec["recommendation_id"],
+                stage=f"{stage}_simple",
+                channel="whatsapp",
+                draft_body=simple[stage].strip(),
+                created_at=db.now_utc(),
+            ))
+            written += 1
 
         rec["chosen_products"] = chosen
         rec["customer_review"] = (entry.get("customer_review") or "").strip()
         rec["data_notes"] = (entry.get("data_notes") or "").strip()
         rec["drafts"] = {s: msgs[s].strip() for s in STAGES}
+        rec["drafts_simple"] = ({s: simple[s].strip() for s in STAGES}
+                                if simple else {})
 
     notes = {r["customer_code"]: r["data_notes"]
              for r in recommendations if r.get("data_notes")}

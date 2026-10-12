@@ -47,3 +47,18 @@ Also discussed (not yet a rule): if a customer doesn't reply to the sample-box
 offer, Rushton's may instead "pop a few items into their next order" with a
 separate samples invoice. Pending Harry confirming the invoice/night-team process
 - do NOT write that variant until it's confirmed.
+
+## 2026-10-12 — Two options per account (Jose, overriding the "no dish ideas" rule above)
+
+Jose: Laurence asked for no dish ideas, **but the dish-idea message is the one that
+actually got chefs replying** (the squash-and-sage special at the 9 Oct review).
+So until the team has evidence either way, write BOTH for every account:
+
+- `messages` — **Option A, standard**: produce-led, may carry ONE short, simple
+  dish idea ("lovely in a curd for the pastry menu", "buttered girolles as a steak
+  side"). Never a full recipe or a menu rewrite.
+- `messages_simple` — **Option B, simpler**: Laurence's style — what's in season,
+  then the box offer. No dish idea.
+
+Laurence picks per account and records which he sent; the tracker's 'Customer
+Replied' column will show which option gets replies. Revisit once there's data.

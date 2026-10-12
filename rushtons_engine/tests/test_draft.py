@@ -139,3 +139,25 @@ def test_apply_rejects_empty_stage(conn, tmp_path):
     drafts = _write_drafts(tmp_path, {"C ONE": bad})
     with pytest.raises(ValueError, match="empty or missing"):
         draft.apply_drafts(conn, drafts, [_rec("C ONE")])
+
+
+def test_optional_simple_option_is_persisted_alongside_standard(conn, tmp_path):
+    """Client 2026-10-12: two message options per account - standard and a
+    simpler season-led one, stored as '<stage>_simple'."""
+    recs = [_rec("C ONE")]
+    conn.execute(db.recommendations.insert().values(
+        id=1, run_date=dt.date(2026, 6, 30), customer_code="C ONE", rank=1))
+    simple = {"announcement": "Quince is in.", "followup": "Still keen?",
+              "postbox": "Box ok?"}
+    drafts = _write_drafts(tmp_path, {"C ONE": _entry(messages_simple=simple)})
+    assert draft.apply_drafts(conn, drafts, recs) == 6
+    stages = {r.stage for r in conn.execute(sa.select(db.comms))}
+    assert stages == set(draft.STAGES) | {f"{s}_simple" for s in draft.STAGES}
+    assert recs[0]["drafts_simple"]["announcement"] == "Quince is in."
+
+
+def test_incomplete_simple_option_is_rejected(conn, tmp_path):
+    drafts = _write_drafts(tmp_path, {"C ONE": _entry(
+        messages_simple={"announcement": "Quince is in."})})
+    with pytest.raises(ValueError, match="messages_simple"):
+        draft.apply_drafts(conn, drafts, [_rec("C ONE")])
