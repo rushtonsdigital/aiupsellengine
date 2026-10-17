@@ -124,6 +124,28 @@ def split_account_parents(custs: dict) -> dict[str, str]:
     return parents
 
 
+def selection_holds(custs: dict, stats: dict, as_of: date) -> set[str]:
+    """Accounts kept out of the weekly sample-box pull while staying visible on
+    the dashboard: the no-sample-box list, single-account holds, parked venue
+    types and brand-new accounts (config, 2026-10-14 emails)."""
+    held = set(config.HOLD_CUSTOMER_CODES)
+    for code, c in custs.items():
+        name = (c.customer_name or "").strip().casefold()
+        if (c.venue_type in config.PARKED_VENUE_TYPES
+                or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)):
+            held.add(code)
+    window_open = min((s["first_order"] for s in stats.values()), default=as_of)
+    # An account trading in the first fortnight of our data predates the
+    # window, so it can't be judged new from its first order — and with less
+    # history than grace + that fortnight, nobody can.
+    settled = window_open + timedelta(days=14)
+    if (as_of - settled).days > config.NEW_ACCOUNT_GRACE_DAYS:
+        held |= {code for code, s in stats.items()
+                 if s["first_order"] > settled
+                 and (as_of - s["first_order"]).days < config.NEW_ACCOUNT_GRACE_DAYS}
+    return held
+
+
 def detect_gaps(bought: set[str], venue_type: str) -> tuple[list[str], list[str]]:
     """Returns (all_targetable_gaps, ordered_gaps).
 
@@ -254,6 +276,7 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             if as_of < date.fromisoformat(until)}
     cooldown |= {code for code, c in custs.items()
                  if (c.group_affiliation or "").strip().casefold() in held}
+    cooldown |= selection_holds(custs, stats, as_of)
 
     # One venue, two accounts: fold each bar account into its main account.
     parents = split_account_parents(custs)
