@@ -1,8 +1,10 @@
 """Ingest raw Fresho exports.
 
-Two file shapes are understood:
+Three file shapes are understood:
   * daily order exports  (`*product_totals_by_customer_YYYY-MM-DD.csv`)
   * the customer master  (`*customers_*.csv`)
+  * £ sales / gross profit per account per month
+                         (`*sales_gp_margin_<start>_<end>.csv`, Sell > Reports)
 
 Order-line idempotency is delete-where-source_file-then-insert. There is
 deliberately NO unique (order_number, product_code) key: real exports contain
@@ -11,6 +13,7 @@ identical duplicate lines within a single file and both lines are genuine.
 
 import csv
 import logging
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -245,3 +248,118 @@ def ingest_customers_file(conn, path: Path) -> int:
             count += 1
     log.info("%s: %d customers upserted", path.name, count)
     return count
+
+
+# --- value layer: Fresho "Sales Totals and Gross Profit Margin" ---------------
+
+VALUE_COLUMNS = ("CustomerCode", "CustomerName", "Orders", "Credits",
+                 "CostOfGoodsSold", "GrossProfit")
+_VALUE_PERIOD = re.compile(r"_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$", re.I)
+
+
+class NotAMonthError(ValueError):
+    """A GP-margin export whose date range isn't one calendar month (or a month
+    to date) — e.g. a whole-year total, which would double-count the months."""
+
+
+def _money(value: str) -> float:
+    """'£27,870.25' -> 27870.25; '(£186.90)' -> -186.90; blank/'N/A' -> 0."""
+    s = (value or "").strip()
+    neg = s.startswith("(") and s.endswith(")")
+    s = s.strip("()").replace("£", "").replace(",", "").strip()
+    try:
+        v = float(s)
+    except ValueError:
+        return 0.0
+    return -v if neg else v
+
+
+def value_file_period(path: Path) -> tuple[date, date]:
+    """(start, end) from the export's filename; raises NotAMonthError unless the
+    range starts on the 1st and ends inside the same month."""
+    m = _VALUE_PERIOD.search(path.name)
+    if not m:
+        raise NotAMonthError(f"{path.name}: no _YYYY-MM-DD_YYYY-MM-DD date range in the name")
+    start, end = _parse_date(m.group(1)), _parse_date(m.group(2))
+    if start.day != 1 or (end.year, end.month) != (start.year, start.month) or end < start:
+        raise NotAMonthError(f"{path.name}: {start}..{end} is not a single calendar "
+                             f"month - export one month (or month to date) per file")
+    return start, end
+
+
+def read_value_rows(path: Path) -> list[dict]:
+    """Parse a GP-margin export into one row per customer code. Fresho repeats a
+    code when an account was renamed mid-period, so duplicates are summed. The
+    'Total' row (blank code) is dropped."""
+    with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
+        reader = csv.DictReader(fh)
+        missing = set(VALUE_COLUMNS) - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"{path.name}: not a GP-margin export, "
+                             f"missing columns {sorted(missing)}")
+        acc: dict[str, dict] = {}
+        for raw in reader:
+            code = _clean_code(raw["CustomerCode"])
+            if not code:
+                continue
+            a = acc.setdefault(code, {"customer_code": code,
+                                      "customer_name": (raw["CustomerName"] or "").strip(),
+                                      "gross_sales": 0.0, "credits": 0.0,
+                                      "cogs": 0.0, "gross_profit": 0.0})
+            a["gross_sales"] += _money(raw["Orders"])
+            a["credits"] += _money(raw["Credits"])
+            a["cogs"] += -_money(raw["CostOfGoodsSold"])   # exported negative
+            a["gross_profit"] += _money(raw["GrossProfit"])
+    for a in acc.values():
+        a["net_sales"] = a["gross_sales"] + a["credits"]
+    return list(acc.values())
+
+
+def ingest_values_file(conn, path: Path) -> int:
+    """Load one month (or month to date) of £ sales/GP. Idempotent per month: the
+    month's rows are replaced, unless what's stored already runs to a later date
+    (an older month-to-date file must never overwrite a fuller one)."""
+    start, end = value_file_period(path)
+    t = db.customer_month_values
+    stored_end = conn.execute(sa.select(sa.func.max(t.c.period_end))
+                              .where(t.c.month == start)).scalar()
+    if stored_end is not None and stored_end > end:
+        log.info("%s: skipped - %s already loaded through %s", path.name,
+                 start.strftime("%Y-%m"), stored_end)
+        return 0
+    rows = read_value_rows(path)
+    conn.execute(t.delete().where(t.c.month == start))
+    now = db.now_utc()
+    if rows:
+        conn.execute(t.insert(), [{**r, "month": start, "period_end": end,
+                                   "source_file": path.name, "ingested_at": now}
+                                  for r in rows])
+    log.info("%s: %d accounts, %s through %s", path.name, len(rows),
+             start.strftime("%Y-%m"), end)
+    return len(rows)
+
+
+def ingest_values_files(conn, paths) -> int:
+    """Load every GP-margin export given, oldest period first, skipping (with a
+    warning) any that isn't a single month - e.g. a Jan-Oct total."""
+    dated = []
+    for p in map(Path, paths):
+        try:
+            dated.append((value_file_period(p), p))
+        except NotAMonthError as exc:
+            log.warning("%s", exc)
+    return sum(ingest_values_file(conn, p) for _, p in sorted(dated))
+
+
+if __name__ == "__main__":
+    # python ingest.py values <file-or-folder>...  - load GP-margin exports
+    import sys
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if len(sys.argv) < 3 or sys.argv[1] != "values":
+        sys.exit("usage: python ingest.py values <file-or-folder>...")
+    files = []
+    for arg in map(Path, sys.argv[2:]):
+        files += sorted(arg.glob(config.VALUES_FILE_GLOB)) if arg.is_dir() else [arg]
+    with db.init_db().begin() as conn:
+        n = ingest_values_files(conn, files)
+    print(f"loaded {n} account-month rows from {len(files)} file(s)")

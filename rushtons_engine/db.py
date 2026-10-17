@@ -157,6 +157,48 @@ product_metrics = sa.Table(
     sa.Column("last_sold", sa.Date),
 )
 
+# --- value layer: £ sales and gross profit -------------------------------------
+# From Fresho's "Sales Totals and Gross Profit Margin" report (Sell > Reports),
+# exported one calendar month per file. Per ACCOUNT per MONTH only - the report
+# has no product or category breakdown. No FK to customers: the report also
+# covers accounts that stopped trading before our order history begins.
+# A month-to-date file is replaced by a later, fuller one for the same month.
+customer_month_values = sa.Table(
+    "customer_month_values", metadata,
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("month", sa.Date, primary_key=True),      # 1st of the month
+    sa.Column("period_end", sa.Date),                   # < month end = month to date
+    sa.Column("customer_name", sa.Text),
+    sa.Column("gross_sales", sa.Numeric),               # Fresho "Orders"
+    sa.Column("credits", sa.Numeric),                   # <= 0
+    sa.Column("net_sales", sa.Numeric),                 # gross_sales + credits
+    sa.Column("cogs", sa.Numeric),                      # >= 0
+    sa.Column("gross_profit", sa.Numeric),              # net_sales - cogs
+    sa.Column("source_file", sa.Text),
+    sa.Column("ingested_at", sa.DateTime(timezone=True)),
+)
+
+# Per-account value summary, rebuilt each run by reporting.refresh_values (the
+# dashboard and chat path read this, never the monthly rows directly).
+customer_value_metrics = sa.Table(
+    "customer_value_metrics", metadata,
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("months", sa.Integer),            # months with value in the window
+    sa.Column("sales_12m", sa.Numeric),         # net sales, last 12 months incl. MTD
+    sa.Column("gp_12m", sa.Numeric),
+    sa.Column("gp_pct_12m", sa.Numeric),
+    sa.Column("last_month", sa.Date),           # latest COMPLETE month
+    sa.Column("sales_last_month", sa.Numeric),
+    sa.Column("gp_pct_last_month", sa.Numeric),
+    sa.Column("sales_prev3_avg", sa.Numeric),   # avg of the 3 complete months before it
+    sa.Column("trend_pct", sa.Numeric),         # last month vs prev3 avg, %
+    sa.Column("sales_mtd", sa.Numeric),
+    sa.Column("mtd_through", sa.Date),
+    sa.Column("orders_last_month", sa.Integer), # from orders, for avg order value
+    sa.Column("aov_last_month", sa.Numeric),
+    sa.Column("series", sa.Text),               # JSON [[YYYY-MM, net, gp], ...]
+)
+
 # One row per (run_date, customer_code, category): the gap_categories /
 # chosen_products JSON on recommendations, flattened in Python by
 # reporting.refresh_funnel so "conversion by category" is a plain group-by and

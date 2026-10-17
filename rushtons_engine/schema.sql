@@ -97,8 +97,8 @@ create table if not exists comms (
 -- reporting.py (same delete-then-bulk-insert pattern as customer_week_metrics).
 -- Metabase and the read-only chat path read these + the reporting.sql views,
 -- never the raw orders table live, so reports stay instant as history grows.
--- Every measure is VOLUME (order/line counts, quantity) — there is no
--- price/revenue in the source. total_qty mixes qty_type; meaningful only per
+-- These are VOLUME measures (order/line counts, quantity); £ value lives only
+-- in customer_month_values / customer_value_metrics (per account, per month). total_qty mixes qty_type; meaningful only per
 -- product, never summed across types.
 
 create table if not exists customer_category_metrics (
@@ -121,6 +121,43 @@ create table if not exists product_metrics (
   buyers_90d      int,             -- distinct buyers in the last 90 days
   first_sold      date,
   last_sold       date
+);
+
+-- Value layer: Fresho "Sales Totals and Gross Profit Margin" report, one
+-- calendar month per file, per ACCOUNT (no product/category split). No FK:
+-- the report covers accounts that stopped before our order history begins.
+create table if not exists customer_month_values (
+  customer_code text,
+  month         date,             -- 1st of the month
+  period_end    date,             -- < month end = month to date
+  customer_name text,
+  gross_sales   numeric,          -- Fresho "Orders"
+  credits       numeric,          -- <= 0
+  net_sales     numeric,          -- gross_sales + credits
+  cogs          numeric,          -- >= 0
+  gross_profit  numeric,          -- net_sales - cogs
+  source_file   text,
+  ingested_at   timestamptz,
+  primary key (customer_code, month)
+);
+
+-- Per-account value summary, rebuilt each run by reporting.refresh_values.
+create table if not exists customer_value_metrics (
+  customer_code     text primary key,
+  months            int,
+  sales_12m         numeric,      -- net sales, last 12 months incl. month to date
+  gp_12m            numeric,
+  gp_pct_12m        numeric,
+  last_month        date,         -- latest complete month
+  sales_last_month  numeric,
+  gp_pct_last_month numeric,
+  sales_prev3_avg   numeric,      -- avg of the 3 complete months before it
+  trend_pct         numeric,      -- last month vs prev3 avg, %
+  sales_mtd         numeric,
+  mtd_through       date,
+  orders_last_month int,
+  aov_last_month    numeric,
+  series            text          -- JSON [[YYYY-MM, net, gp], ...]
 );
 
 -- gap_categories / chosen_products JSON on recommendations, flattened in Python

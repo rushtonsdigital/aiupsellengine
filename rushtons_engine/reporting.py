@@ -6,13 +6,16 @@ summaries always agree with ingested history. Metabase and the read-only chat
 path (query.py) read these tables and the reporting.sql views, never the raw
 orders table live, so reports stay instant as history grows.
 
-Every measure here is a VOLUME measure — order counts, line counts, quantity.
-There is no price/revenue anywhere in the source data. total_qty mixes qty_type
-(Each/kg/box) and is only meaningful per product, never summed across types.
+refresh_sales / refresh_funnel are VOLUME measures — order counts, line counts,
+quantity. total_qty mixes qty_type (Each/kg/box) and is only meaningful per
+product, never summed across types. £ value comes only from refresh_values:
+per account per month (Fresho's GP-margin report has no product split).
 """
 
+import calendar
+import json
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 import sqlalchemy as sa
 
@@ -134,3 +137,83 @@ def refresh_funnel(conn) -> int:
                      [facts[k] for k in sorted(facts)])
     log.info("reporting funnel refreshed: %d category facts", len(facts))
     return len(facts)
+
+
+def _month_end(m: date) -> date:
+    return m.replace(day=calendar.monthrange(m.year, m.month)[1])
+
+
+def _add_months(m: date, n: int) -> date:
+    y, mo = divmod(m.month - 1 + n, 12)
+    return date(m.year + y, mo + 1, 1)
+
+
+def refresh_values(conn) -> int:
+    """Rebuild customer_value_metrics from customer_month_values.
+
+    Months are compared globally, not per account, so "last month" means the
+    same calendar month for everyone and an account with no sales that month
+    shows £0 (a real drop) rather than its own last active month. Returns rows.
+    """
+    t = db.customer_month_values
+    rows = conn.execute(sa.select(t.c.customer_code, t.c.month, t.c.period_end,
+                                  t.c.net_sales, t.c.gross_profit)).fetchall()
+    conn.execute(db.customer_value_metrics.delete())
+    if not rows:
+        log.info("reporting values: no GP-margin data loaded")
+        return 0
+
+    complete = sorted({r.month for r in rows if r.period_end == _month_end(r.month)})
+    latest = max(r.month for r in rows)
+    mtd_month = latest if latest not in complete else None
+    mtd_through = max((r.period_end for r in rows if r.month == mtd_month), default=None)
+    last = complete[-1] if complete else None
+    prev3 = [m for m in complete if last and _add_months(last, -3) <= m < last]
+    window_start = _add_months(latest, -11)
+
+    # Orders per account in the last complete month, for average order value -
+    # only when our order history covers that whole month.
+    orders_n: dict[str, int] = {}
+    first_order = conn.execute(sa.select(sa.func.min(db.orders.c.delivery_date))).scalar()
+    if last and first_order and first_order <= last:
+        o = db.orders.c
+        orders_n = dict(conn.execute(
+            sa.select(o.customer_code, sa.func.count(sa.distinct(o.order_number)))
+            .where(o.order_state.in_(config.COUNTED_ORDER_STATES),
+                   o.delivery_date >= last, o.delivery_date <= _month_end(last))
+            .group_by(o.customer_code)).fetchall())
+
+    by_cust: dict[str, dict[date, tuple[float, float]]] = {}
+    for r in rows:
+        if r.month >= window_start:
+            by_cust.setdefault(r.customer_code, {})[r.month] = (
+                float(r.net_sales or 0), float(r.gross_profit or 0))
+
+    pct = lambda num, den: round(100.0 * num / den, 1) if den else None
+    out = []
+    for code, months in sorted(by_cust.items()):
+        sales = sum(v[0] for v in months.values())
+        gp = sum(v[1] for v in months.values())
+        s_last, g_last = months.get(last, (0.0, 0.0)) if last else (0.0, 0.0)
+        prev_avg = (sum(months.get(m, (0.0, 0.0))[0] for m in prev3) / len(prev3)
+                    if prev3 else None)
+        n_orders = orders_n.get(code)
+        out.append({
+            "customer_code": code, "months": len(months),
+            "sales_12m": round(sales, 2), "gp_12m": round(gp, 2),
+            "gp_pct_12m": pct(gp, sales),
+            "last_month": last, "sales_last_month": round(s_last, 2),
+            "gp_pct_last_month": pct(g_last, s_last),
+            "sales_prev3_avg": round(prev_avg, 2) if prev_avg is not None else None,
+            "trend_pct": pct(s_last - prev_avg, prev_avg) if prev_avg else None,
+            "sales_mtd": round(months.get(mtd_month, (0.0, 0.0))[0], 2) if mtd_month else None,
+            "mtd_through": mtd_through,
+            "orders_last_month": n_orders,
+            "aov_last_month": round(s_last / n_orders, 2) if n_orders else None,
+            "series": json.dumps([[m.strftime("%Y-%m"), round(v[0], 2), round(v[1], 2)]
+                                  for m, v in sorted(months.items())]),
+        })
+    conn.execute(db.customer_value_metrics.insert(), out)
+    log.info("reporting values refreshed: %d accounts, last complete month %s",
+             len(out), last)
+    return len(out)

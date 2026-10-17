@@ -16,10 +16,14 @@ reporting views, run it safely, and answer.
 
 ## Three hard truths about this data — say them when they matter
 
-1. **Volume, not revenue.** There is **no price or spend anywhere** in the source. Every measure
-   is a *volume* measure: number of orders, number of order lines, and `quantity`. If someone
-   asks "how much has X spent / what's our revenue", you cannot answer in money — answer in
-   orders/lines and say so plainly.
+1. **£ exists per account per month only.** Money comes from Fresho's "Sales Totals and Gross
+   Profit Margin" report, loaded one calendar month per file into `customer_month_values`
+   (net_sales, gross_profit, cogs, credits — from Jan 2026) and summarised per account in
+   `customer_value_metrics` (sales_12m, gp_pct_12m, sales_last_month, sales_prev3_avg,
+   trend_pct, sales_mtd, aov_last_month). There is **no £ by product or category** — that
+   report has no product split. Everything order-based (orders, lines, `quantity`, every `v_*`
+   view) is still *volume*. For "what did X spend / GP%", use the value tables; for "which
+   categories make the money", say it isn't available yet.
 2. **Never sum `quantity` across products.** `qty_type` is mixed (Each / kg / box), so a single
    summed `total_qty` is meaningless. Only ever use quantity **per product** (or grouped by
    `qty_type`). For "how much did they buy", prefer **distinct orders** or **line counts**.
@@ -126,6 +130,7 @@ named reports there rather than here.
 
 - Lead with the answer in plain English; show a small table only if it helps.
 - If the number is a volume (orders/lines), say so — don't let it read as revenue.
-- If a question needs money, or menu-matching, or anything not in this data, say what's missing
-  rather than inventing it (a price feed is future scope, noted in the BI plan).
+- £ answers come only from `customer_month_values` / `customer_value_metrics` (net sales after
+  credits; GP% = gross_profit / net_sales). If a question needs £ by product/category, or
+  menu-matching, or anything not in this data, say what's missing rather than inventing it.
 - If asked to change data, decline and point to the weekly pipeline — this path is read-only.

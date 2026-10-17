@@ -287,3 +287,6 @@ PRESTIGE_SEED_FILE = ENGINE_DIR.parent / "rushtons_customer_classification.csv"
 # --- weekly file patterns -------------------------------------------------------
 ORDERS_FILE_GLOB = "*product_totals_by_customer_*.csv"
 CUSTOMERS_FILE_GLOB = "*customers_*.csv"
+# Fresho Sell > Reports > "Sales Totals and Gross Profit Margin", CSV, one
+# calendar month (or month to date) per file.
+VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
