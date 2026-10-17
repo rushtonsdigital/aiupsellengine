@@ -1,4 +1,4 @@
-import datetime as dt
+﻿import datetime as dt
 
 import sqlalchemy as sa
 
@@ -116,3 +116,47 @@ def test_venue_normalisation():
     assert classify.normalize_venue_type("members club") == "Members Club"
     assert classify.normalize_venue_type(None) == "Unknown"
     assert classify.normalize_venue_type("food truck") == "Food Truck"  # passthrough
+
+
+def _month_value(conn, code, month, net):
+    """One complete month of £ for an account (as ingest.ingest_values_file stores it)."""
+    import calendar
+    end = month.replace(day=calendar.monthrange(month.year, month.month)[1])
+    conn.execute(db.customer_month_values.insert().values(
+        customer_code=code, month=month, period_end=end, net_sales=net,
+        gross_sales=net, credits=0, cogs=0, gross_profit=0))
+
+
+def test_size_bands_rank_on_recent_value_and_skip_excluded(conn, monkeypatch):
+    """With £ loaded, bands follow the last 3 complete months of sales (not
+    lifetime lines); rule-excluded accounts don't take gold slots but still get
+    a band from the cut-offs; TIER_OVERRIDES win."""
+    import config
+    _setup_product(conn)
+    for i in range(10):
+        code = f"C{i:02d}"
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["P1"], AS_OF - dt.timedelta(days=6), weeks=1)
+        # value runs opposite to code order: C09 is the biggest spender
+        for m in (dt.date(2026, 4, 1), dt.date(2026, 5, 1), dt.date(2026, 6, 1)):
+            _month_value(conn, code, m, 1000 * (i + 1))
+    _month_value(conn, "C00", dt.date(2026, 1, 1), 10**7)   # outside the 3-month window
+    add_customer(conn, "URBAN")                              # excluded group, big spender
+    conn.execute(db.customers.update().where(db.customers.c.customer_code == "URBAN")
+                 .values(group_affiliation="Urban Pubs & Bars"))
+    weekly_orders(conn, "URBAN", ["P1"], AS_OF - dt.timedelta(days=6), weeks=1)
+    for m in (dt.date(2026, 4, 1), dt.date(2026, 5, 1), dt.date(2026, 6, 1)):
+        _month_value(conn, "URBAN", m, 99999)
+    bands_of = lambda: {r.customer_code: r.size_band
+                        for r in conn.execute(sa.select(db.customers)).fetchall()}
+
+    classify.classify_all(conn, AS_OF)
+    bands = bands_of()
+    assert bands["C09"] == "gold" and bands["C08"] == "gold"   # top 2 of 10 by £
+    assert bands["C00"] == "bronze"          # big January is outside the window
+    assert bands["URBAN"] == "gold"          # banded by cut-off, not ranked -
+    assert bands["C07"] == "silver"          # so it didn't push C08 out of gold
+
+    monkeypatch.setattr(config, "TIER_OVERRIDES", {"C08": "silver"})
+    classify.classify_all(conn, AS_OF)
+    assert bands_of()["C08"] == "silver"     # a confirmed hand rating wins

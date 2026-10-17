@@ -25,6 +25,8 @@ REPORTING_DATABASE_URL = os.environ.get("REPORTING_DATABASE_URL", DATABASE_URL)
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", ENGINE_DIR / "data"))
 EXPORT_DIR = Path(os.environ.get("EXPORT_DIR", ENGINE_DIR / "output"))
+# Monthly seasonal lists (seasonal.py): seasonal/seasonal_YYYY-MM.csv
+SEASONAL_DIR = ENGINE_DIR / "seasonal"
 
 # --- order data --------------------------------------------------------------
 # Every row counts only if it is invoiced. Anything else (e.g. 'accepted', an
@@ -66,11 +68,20 @@ ADHOC_LONG_LAPSED_DAYS = 56
 REGULAR_MIN_ORDERS = 5     # >=5 orders with tight cadence = "regular pattern"
 REGULAR_MAX_MEDIAN_GAP = 7 # median days between orders
 
-# --- size band (decision 1: volume proxy, replicates prior classification) ----
+# --- size band (gold / silver / bronze) ---------------------------------------
 # Percentile banding on total order lines, matching the existing
 # rushtons_customer_classification.csv (81 gold / 204 silver / 123 bronze).
-GOLD_PERCENTILE = 0.20     # top 20% by order lines
+GOLD_PERCENTILE = 0.20     # top 20%
 SILVER_PERCENTILE = 0.70   # next 50%; remainder bronze
+# Since 2026-10-17 bands rank on net £ sales over the last N complete months of
+# Fresho's GP-margin report (recent value, not lifetime volume); with no £ data
+# loaded they fall back to lifetime order lines. Rule-excluded accounts are
+# left out of the percentile pool (classify.size_bands).
+VALUE_BAND_MONTHS = 3
+# Hand ratings the team has confirmed, {customer_code: 'gold'|'silver'|'bronze'}.
+# They beat the computed band. (Hannah 2026-10-14: ratings were reviewed by
+# hand - output/tier_review_<date>.csv lists where they differ from the data.)
+TIER_OVERRIDES: dict[str, str] = {}
 
 # --- candidate selection (decisions 2, 3) --------------------------------------
 LOW_ORDER_METRIC = "sku"   # 'sku' now, flip to 'category' later (decision 2)

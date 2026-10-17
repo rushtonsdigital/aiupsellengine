@@ -342,3 +342,30 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
     monkeypatch.setattr(config, "NEW_ACCOUNT_GRACE_DAYS", 0)
     codes = {r["customer_code"] for r in sel.select_top(conn, run_date=AS_OF)}
     assert "NEWBIE" in codes
+
+
+def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
+    """The month's seasonal list: 'out' lines never reach the pool, 'peak'
+    lines lead it (even with no recent buyers) and carry the flag + note."""
+    import seasonal
+    (tmp_path / f"seasonal_{AS_OF:%Y-%m}.csv").write_text(
+        "pattern,status,note,source\n"
+        "^squash - delica,peak,the season of Delica,Laurence\n"
+        "^mushrooms - girolles scottish,out,out of season,Laurence\n",
+        encoding="utf-8")
+    monkeypatch.setattr(config, "SEASONAL_DIR", tmp_path)
+    seasonal.rules_for.cache_clear()
+    add_product(conn, "VEG-POP", name="Carrots")
+    add_product(conn, "VEG-DEL", name="Squash - Delica")
+    add_product(conn, "VEG-GIR", name="Mushrooms - Girolles Scottish")
+    add_customer(conn, "BG1")
+    add_order(conn, "BG1", "VEG-POP", AS_OF - dt.timedelta(days=2))   # popular
+    try:
+        pool = sel.build_product_pool(conn, "Vegetables", AS_OF, set())
+    finally:
+        seasonal.rules_for.cache_clear()
+    names = [p["name"] for p in pool]
+    assert names[0] == "Squash - Delica" and pool[0]["season"] == "peak"
+    assert pool[0]["season_note"] == "the season of Delica"
+    assert "Mushrooms - Girolles Scottish" not in names
+    assert "season" not in pool[names.index("Carrots")]

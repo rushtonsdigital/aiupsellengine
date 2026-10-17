@@ -19,7 +19,7 @@ import csv
 import logging
 import re
 import statistics
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -133,6 +133,64 @@ def is_excluded_by_rule(c) -> bool:
             or any(re.match(p, name) for p in config.EXCLUDED_NAME_PATTERNS))
 
 
+def recent_value(conn) -> dict[str, float]:
+    """Net £ sales per account over the last VALUE_BAND_MONTHS complete months
+    of GP-margin data. Empty when no £ data is loaded (banding then falls back
+    to order lines)."""
+    t = db.customer_month_values
+    rows = conn.execute(sa.select(t.c.customer_code, t.c.month, t.c.period_end,
+                                  t.c.net_sales)).fetchall()
+    complete = sorted({r.month for r in rows
+                       if r.period_end.month != (r.period_end + timedelta(days=1)).month})
+    window = set(complete[-config.VALUE_BAND_MONTHS:])
+    value: dict[str, float] = {}
+    for r in rows:
+        if r.month in window:
+            value[r.customer_code] = value.get(r.customer_code, 0.0) + float(r.net_sales or 0)
+    return value
+
+
+def size_bands(conn, custs, stats) -> dict[str, str]:
+    """Gold / silver / bronze for every account with order history.
+
+    Ranked on recent £ sales when GP-margin data is loaded, else on lifetime
+    order lines (the original volume proxy). Percentiles (top 20% gold, next
+    50% silver) are taken over real targets only — internal and rule-excluded
+    accounts (Urban Pubs, Will's book, delivery-on-behalf...) no longer take
+    gold slots; they get a band from the same cut-off values. TIER_OVERRIDES
+    (a hand rating the team has confirmed) win over everything. Ties break on
+    customer_code so banding is a total order."""
+    value = recent_value(conn)
+    metric = ((lambda code: value.get(code, 0.0)) if value
+              else (lambda code: float(stats[code]["num_lines"])))
+    traded = [c for c in custs if c.customer_code in stats and not is_internal(c.customer_name)]
+    pool = sorted((c.customer_code for c in traded if not is_excluded_by_rule(c)),
+                  key=lambda code: (-metric(code), code))
+    bands, n = {}, len(pool)
+    gold_min = silver_min = None
+    for i, code in enumerate(pool):
+        pct = (i + 1) / n
+        if pct <= config.GOLD_PERCENTILE:
+            bands[code], gold_min = "gold", metric(code)
+        elif pct <= config.SILVER_PERCENTILE:
+            bands[code], silver_min = "silver", metric(code)
+        else:
+            bands[code] = "bronze"
+    for c in traded:
+        if c.customer_code not in bands:     # rule-excluded: same cut-offs
+            m = metric(c.customer_code)
+            bands[c.customer_code] = (
+                "gold" if gold_min is not None and m >= gold_min
+                else "silver" if silver_min is not None and m >= silver_min
+                else "bronze")
+    for code, band in config.TIER_OVERRIDES.items():
+        if code in bands:
+            bands[code] = band
+    log.info("size bands on %s: %d ranked, %d excluded banded by cut-off",
+             "recent £ sales" if value else "order lines", n, len(traded) - n)
+    return bands
+
+
 def classify_all(conn, as_of: date) -> None:
     """Recompute activity_status, size_band, prestige, last_order_date for
     every customer. Deterministic for a given orders table and as_of date."""
@@ -140,20 +198,7 @@ def classify_all(conn, as_of: date) -> None:
     seed = load_prestige_seed()
     custs = conn.execute(sa.select(db.customers)).fetchall()
 
-    # size band: percentile rank on total lines, ties broken by customer_code
-    # so banding is a total order (matches prior file: ~20% gold / 50% silver).
-    banded = sorted(
-        (c.customer_code for c in custs
-         if c.customer_code in stats and not is_internal(c.customer_name)),
-        key=lambda code: (-stats[code]["num_lines"], code),
-    )
-    bands = {}
-    n = len(banded)
-    for i, code in enumerate(banded):
-        pct = (i + 1) / n if n else 1.0
-        bands[code] = ("gold" if pct <= config.GOLD_PERCENTILE
-                       else "silver" if pct <= config.SILVER_PERCENTILE
-                       else "bronze")
+    bands = size_bands(conn, custs, stats)
 
     for c in custs:
         s = stats.get(c.customer_code)

@@ -1,0 +1,22 @@
+pattern,status,note,source
+^brussels sprouts,peak,British - October market report,Market report Oct 2026 (Hannah 8 Oct)
+^pumpkin halloween,peak,British - Halloween pumpkin,Market report Oct 2026 (Hannah 8 Oct)
+^potatoes - pink fir,peak,British - Pink Fir potatoes,Market report Oct 2026 (Hannah 8 Oct)
+^parsnip,peak,British - Piccolo parsnips,Market report Oct 2026 (Hannah 8 Oct)
+^beetroot,peak,"British - red, candy and golden beetroot",Market report Oct 2026 (Hannah 8 Oct)
+^apples - cox,peak,British - Cox's apples,Market report Oct 2026 (Hannah 8 Oct)
+^pears - decana,peak,Italian - Decana pears,Market report Oct 2026 (Hannah 8 Oct)
+^puntarella,peak,Italian - puntarelle,Market report Oct 2026 (Hannah 8 Oct)
+^pomegranates,peak,Italian - pomegranates,Market report Oct 2026 (Hannah 8 Oct)
+^(kaki|persimmon),peak,Italian - kaki / persimmon,Market report Oct 2026 (Hannah 8 Oct)
+^lettuce - treviso,peak,Italian - Treviso,Market report Oct 2026 (Hannah 8 Oct)
+^chestnuts$,peak,European - chestnuts in shell,Market report Oct 2026 (Hannah 8 Oct)
+^fresh truffles - black,peak,European - black truffle,Market report Oct 2026 (Hannah 8 Oct)
+^salsify,peak,European - salsify,Market report Oct 2026 (Hannah 8 Oct)
+^chervil root,peak,European - chervil root,Market report Oct 2026 (Hannah 8 Oct)
+^squash - ,peak,Autumn squash (Delica and friends),"Laurence 9 Oct (""the season of Delica squash""), Hannah squash content 14 Oct"
+^pumpkin - ironbark,peak,Autumn squash,"Laurence 9 Oct, Hannah squash content 14 Oct"
+^zucca violino,peak,Autumn squash (Italian),"Laurence 9 Oct, Hannah squash content 14 Oct"
+^mushrooms - chanterelles,peak,Yellow chanterelles - Laurence's swap for Scottish girolles,Laurence 14 Oct
+^mushrooms - girolles scottish,out,Scottish girolles are out of season,Laurence 14 Oct
+^tomatoes - heirloom premium .*\(iow\),out,Isle of Wight heritage tomatoes are out of season,Laurence 14 Oct
