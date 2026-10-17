@@ -162,6 +162,27 @@ EXCLUDED_CUSTOMER_CODES |= {"R ROBINRA"}
 # chef (2026-10-09 review) - 8 weeks from the boxes.
 GROUP_HOLD_UNTIL = {"clapham leisure group": "2026-11-30"}
 
+# --- selection-only holds, 2026-10-14 emails (Laurence / Hannah) --------------
+# Unlike the exclusions above these accounts stay on the dashboard (decline,
+# win-back, peer gaps) — they are only kept out of the weekly sample-box pull.
+# No-sample-box list, by account-name pattern (regex from the start of the
+# name): St James' Court hotel — "pretty much impossible to get a foot in the
+# door" (Laurence); "we'll add all those accounts to the no-sample-box list"
+# (Hannah). It had come up three weeks running.
+NO_SAMPLE_BOX_NAME_PATTERNS = [r"st\.?\s+james'?\s+court\b"]
+# Single accounts held open-endedly, {code: reason}. Remove by hand when the
+# reason lapses. Dukes: main kitchen closed for refurbishment, bar-only.
+HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)"}
+# Venue types parked for sample boxes. Event caterers order to their client's
+# brief, so a sample box rarely lands — "let's park that segment for now and
+# revisit" (Hannah, re Zara Goalen). Also covers Schmaltz Production.
+PARKED_VENUE_TYPES = {"Event catering"}
+# Brand-new accounts aren't upsold yet ("Brand new account, no need to upsell
+# yet" - Laurence, Around the Cluck & Kossoffs). An account is new when its
+# first order is under this many days before the run date. Accounts already
+# trading when our data window opened are never "new".
+NEW_ACCOUNT_GRACE_DAYS = 42
+
 # Ranking weights: score components are each normalised to 0..1 (see select.py).
 WEIGHT_ENGAGEMENT = 3.0    # orders per week, capped
 WEIGHT_HEADROOM = 2.0      # count of gap categories

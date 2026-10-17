@@ -312,3 +312,33 @@ def test_client_exclusion_rules_2026_10(conn):
     codes = {r["customer_code"] for r in _classify_and_select(conn)}
     assert "OKAY" in codes
     assert not codes & (set(specs) - {"OKAY"})
+
+
+def test_selection_holds_2026_10_14(conn, monkeypatch):
+    """No-sample-box list (St James' Court), single-account holds (Dukes),
+    parked venue types (event caterers) and brand-new accounts are kept out of
+    the pull - but stay un-Excluded, so the dashboard still shows them."""
+    _seed_catalogue(conn)
+    specs = {"OKAY": {}, "C STJCP": {"customer_name": "St James Court Pastry Kitchen"},
+             "C STJ2": {"customer_name": "St. James' Court Kona Kitchen"},
+             "C DUKES": {"customer_name": "Dukes Hotel"},
+             "EVENTS": {"venue_type": "Event catering"}}
+    for code, vals in specs.items():
+        add_customer(conn, code)
+        if vals:
+            conn.execute(db.customers.update()
+                         .where(db.customers.c.customer_code == code).values(**vals))
+        # trading since well before the grace window
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=90), weeks=13)
+    add_customer(conn, "NEWBIE")           # first order a fortnight ago
+    weekly_orders(conn, "NEWBIE", ["VEG-1"], AS_OF - dt.timedelta(days=13), weeks=2)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "OKAY" in codes
+    assert not codes & {"C STJCP", "C STJ2", "C DUKES", "EVENTS", "NEWBIE"}
+    prestige = {r.customer_code: r.prestige
+                for r in conn.execute(sa.select(db.customers))}
+    assert prestige["C STJCP"] != "Excluded" and prestige["C DUKES"] != "Excluded"
+    # the grace period, not some other rule, is what holds the new account
+    monkeypatch.setattr(config, "NEW_ACCOUNT_GRACE_DAYS", 0)
+    codes = {r["customer_code"] for r in sel.select_top(conn, run_date=AS_OF)}
+    assert "NEWBIE" in codes

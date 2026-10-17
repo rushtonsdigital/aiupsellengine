@@ -62,3 +62,28 @@ So until the team has evidence either way, write BOTH for every account:
 
 Laurence picks per account and records which he sent; the tracker's 'Customer
 Replied' column will show which option gets replies. Revisit once there's data.
+
+## 2026-10-14 — Follow-up becomes a definite send, not "add it to your next order" (Hannah)
+
+Supersedes the "pop a few items into their next order" idea above. Laurence: that
+version is "quite a manual process" because "we don't know when the next order
+would be". Hannah's fix: *"instead of asking them to add it themselves, we could say
+we're sending it tomorrow and we'd love for them to sample x, y, z. That way it
+becomes a definite send rather than an open follow-up."*
+
+So the **follow-up** (stage 2, for chefs who haven't replied to the announcement),
+in BOTH options, now:
+
+- says plainly that Rushton's is sending a few samples over **tomorrow**;
+- names the two or three picked products (no new ones — same picks as the
+  announcement);
+- invites them to try, without asking them to order or reply. A soft "let us know
+  what you think" is fine.
+
+E.g. *"Hi team, we're sending a few bits over tomorrow for you to try - some
+Delica squash and Pink Fir potatoes, both at their best right now. Let us know
+what you think."*
+
+Still "Hi team", no sign-off, one short line on the produce. Hannah put this to
+Laurence as a question ("What do you think?"); write it this way from the 19 Oct
+pull and revise when he replies.

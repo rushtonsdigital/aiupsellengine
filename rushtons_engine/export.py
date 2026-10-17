@@ -31,7 +31,7 @@ SUMMARY_COLS = [
     "Gap Categories (offered)", "Products Pitched", "Score",
     "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
     "Simple - Announcement", "Simple - Follow-up", "Simple - Post-box",
-    "Contact (phone)", "Valid Suggestion (Y/N)", "Approved (Y/N)", "Sent Date",
+    "Contact (phone)", "Valid Suggestion (Y/N)", "Option Sent (A/B)", "Sent Date",
     "Customer Replied (Y/N)", "Box Sent (Y/N)", "Outcome", "Notes",
 ]
 SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 34, 8, 45, 45, 45,
@@ -151,7 +151,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
             "Score": float(rec["score"]),
             **messages,
             "Contact (phone)": "", "Valid Suggestion (Y/N)": "",
-            "Approved (Y/N)": "", "Sent Date": "", "Customer Replied (Y/N)": "",
+            "Option Sent (A/B)": "", "Sent Date": "", "Customer Replied (Y/N)": "",
             "Box Sent (Y/N)": "", "Outcome": "", "Notes": "",
         }
         for col, label in enumerate(SUMMARY_COLS, start=1):
@@ -238,7 +238,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
                 tab.row_dimensions[row].height = max(30, 14 * (body.count("\n") + 2))
                 row += 1
             row += 1
-        for label in ("Contact (phone)", "Valid suggestion (Y/N)", "Approved by",
+        for label in ("Contact (phone)", "Valid suggestion (Y/N)", "Option sent (A/B)",
                       "Sent date", "Customer replied (Y/N)", "Box sent (Y/N)",
                       "Outcome", "Notes"):
             put(label, "")
