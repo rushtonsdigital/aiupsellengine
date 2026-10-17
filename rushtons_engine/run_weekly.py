@@ -8,7 +8,8 @@
 
 Command 1 (selection):
     python run_weekly.py [--data-dir DIR]
-      ingest -> metrics -> classify -> deterministic top-10 -> eligible
+      ingest (orders, customer master, GP-margin months) -> metrics ->
+      classify -> deterministic top-N -> eligible
       product pool per account -> writes output/drafting_brief_<date>.json
       + tracker (products and drafts pending)
 
@@ -68,6 +69,12 @@ def run(data_dir: Path, drafts_file: Path | None = None,
                 log.warning("no customer master export in %s - using existing customers", data_dir)
             total = sum(ingest.ingest_orders_file(conn, f) for f in order_files)
             log.info("ingested %d order lines from %d files", total, len(order_files))
+            # £ sales / GP: optional, one calendar month (or month to date) per file.
+            value_files = sorted(data_dir.glob(config.VALUES_FILE_GLOB))
+            if value_files:
+                ingest.ingest_values_files(conn, value_files)
+            else:
+                log.warning("no GP-margin export in %s - £ values not refreshed", data_dir)
 
         # as_of anchors the whole run (cooldown window, seasonality, activity,
         # and the date stamped on the brief/tracker). Defaults to the latest
@@ -76,6 +83,7 @@ def run(data_dir: Path, drafts_file: Path | None = None,
         as_of = run_date or selection.as_of_date(conn)
         metrics.recompute(conn)
         reporting.refresh_sales(conn, as_of)   # BI: category + product summaries
+        reporting.refresh_values(conn)         # BI: £ sales / GP per account
         classify.classify_all(conn, as_of)
         recs = selection.select_top(conn, run_date=as_of)
         if not recs:

@@ -25,7 +25,9 @@ Layout: a section nav — left rail on desktop, horizontal scroll bar on phones 
 switching between Actions / Protect / Recover / Grow / Manage, with the KPI
 tiles always visible and deep-linkable via location.hash.
 
-Every measure is VOLUME (orders, order lines) — there is no price data anywhere.
+Order-based measures are VOLUME (orders, order lines). £ sales and gross profit
+come from Fresho's GP-margin report, per account per month only (no product or
+category split) - see reporting.refresh_values.
 Outreach drafts are written by Claude against the rushtons-comms skill and read
 from output/outreach_drafts.json; Python never invents customer-facing words.
 """
@@ -180,7 +182,7 @@ select h.customer_code, h.customer_name, h.venue_type, h.size_band,
        h.days_since_last_order, coalesce(v.total_lines, 0) as total_lines,
        c.legal_entity_name, c.delivery_address, c.billing_address,
        c.delivery_run_code, c.payment_term_days, c.pricing_level,
-       c.internal_notes, c.group_affiliation, c.account_stage
+       c.internal_notes, c.group_affiliation, c.account_stage, h.prestige
 from v_customer_health h
 join customers c on c.customer_code = h.customer_code
 left join vol v on v.customer_code = h.customer_code
@@ -365,6 +367,90 @@ def _svg_reps(rows) -> str:
         p.append(f'<text x="{lab_w+bw+10:.0f}" y="{y+13}" class="tick">'
                  f'{acc} accounts &#183; {lap} lapsed ({int(r["lapsed_pct"] or 0)}%) &#183; '
                  f'{r["avg_open_gaps"]} avg gaps</text>')
+    p.append("</svg>")
+    return "".join(p)
+
+
+Q_VALUES = """
+select customer_code, sales_12m, gp_pct_12m, sales_last_month, gp_pct_last_month,
+       sales_prev3_avg, trend_pct, sales_mtd, aov_last_month, series
+from customer_value_metrics
+"""
+
+Q_VALUE_MONTHS = """
+select month, max(period_end) as period_end, sum(net_sales) as net,
+       sum(gross_profit) as gp
+from customer_month_values group by month order by month
+"""
+
+
+def _num(v, nd=0):
+    return None if v is None else round(float(v), nd)
+
+
+def _money_short(v: float) -> str:
+    """£1.12M / £874k / £950 - for tiles and chart labels."""
+    if abs(v) >= 1e6:
+        return f"&#163;{v / 1e6:.2f}M"
+    if abs(v) >= 1e4:
+        return f"&#163;{v / 1e3:.0f}k"
+    return f"&#163;{v:,.0f}"
+
+
+def _load_values() -> tuple[dict, list]:
+    """£ per account ({code: {...}}) and the business's month totals. Empty when
+    no GP-margin export has been loaded yet - the page then hides every £."""
+    try:
+        per = {r["customer_code"]: {
+            "s": _num(r["sales_12m"]), "g": _num(r["gp_pct_12m"], 1),
+            "lm": _num(r["sales_last_month"]), "gl": _num(r["gp_pct_last_month"], 1),
+            "p3": _num(r["sales_prev3_avg"]), "tr": _num(r["trend_pct"]),
+            "mtd": _num(r["sales_mtd"]), "aov": _num(r["aov_last_month"]),
+            "ser": [[m, round(n), round(g)] for m, n, g in json.loads(r["series"] or "[]")],
+        } for r in _rows(Q_VALUES, limit=5000)}
+        months = [{
+            "m": r["month"].strftime("%Y-%m") if hasattr(r["month"], "strftime")
+                 else str(r["month"])[:7],
+            "end": str(r["period_end"]), "net": round(float(r["net"] or 0)),
+            "gp": round(float(r["gp"] or 0)),
+        } for r in _rows(Q_VALUE_MONTHS, limit=100)]
+    except Exception:
+        log.exception("value layer unavailable - dashboard shows volume only")
+        return {}, []
+    for m in months:   # month to date when the export stops before month end
+        y, mo = map(int, m["m"].split("-"))
+        m["mtd"] = m["end"] < str(date(y + mo // 12, mo % 12 + 1, 1) - timedelta(days=1))
+    return per, months
+
+
+def _svg_monthly(months: list) -> str:
+    """Net sales per month (bars) with GP% above each; month to date hatched."""
+    if not months:
+        return ""
+    w, h, top, base, lab_h = 700, 230, 34, 190, 18
+    mx = max(m["net"] for m in months) or 1
+    slot = (w - 20) / len(months)
+    bw = min(46, slot * 0.62)
+    names = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    p = [f'<svg viewBox="0 0 {w} {h}" class="chart" role="img" aria-label='
+         f'"Net sales and gross profit margin by month">',
+         '<defs><pattern id="mtd" width="6" height="6" patternUnits="userSpaceOnUse" '
+         'patternTransform="rotate(45)"><rect width="3" height="6" '
+         f'fill="{SILVER}" opacity="0.45"/></pattern></defs>']
+    for i, m in enumerate(months):
+        x = 10 + i * slot + (slot - bw) / 2
+        bh = (m["net"] / mx) * (base - top)
+        fill = "url(#mtd)" if m["mtd"] else SILVER
+        gp_pct = 100.0 * m["gp"] / m["net"] if m["net"] else 0
+        p.append(f'<rect x="{x:.0f}" y="{base - bh:.0f}" width="{bw:.0f}" '
+                 f'height="{bh:.0f}" rx="3" fill="{fill}"/>')
+        p.append(f'<text x="{x + bw / 2:.0f}" y="{base - bh - 18:.0f}" class="tick" '
+                 f'text-anchor="middle">{_money_short(m["net"])}</text>')
+        p.append(f'<text x="{x + bw / 2:.0f}" y="{base - bh - 5:.0f}" class="lab" '
+                 f'text-anchor="middle">{gp_pct:.1f}%</text>')
+        label = names[int(m["m"][5:]) - 1] + (" to " + m["end"][8:] if m["mtd"] else "")
+        p.append(f'<text x="{x + bw / 2:.0f}" y="{base + lab_h}" class="tick" '
+                 f'text-anchor="middle">{label}</text>')
     p.append("</svg>")
     return "".join(p)
 
@@ -679,8 +765,10 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "inotes": r["internal_notes"] or "",
         "grp": r["group_affiliation"] or "",
         "stage": r["account_stage"] or "",
+        "x": 1 if r["prestige"] == "Excluded" else 0,
     } for r in _rows(Q_DIRECTORY, limit=1000)]
 
+    values, value_months = _load_values()
     leads_data = _load_leads()
     _suggest_lead_matches(leads_data, directory, contacts)
 
@@ -699,7 +787,23 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "cats": cats,
         "targetable": TARGETABLE,
         "leads": leads_data,
+        "value": values,
+        "valueMonths": value_months,
     }
+
+    complete = [m for m in value_months if not m["mtd"]]
+    if complete:
+        lm = complete[-1]
+        names = ("January February March April May June July August September "
+                 "October November December").split()
+        lm_name = names[int(lm["m"][5:]) - 1]
+        kpi_sales = (f'<button class="kpi" data-tab="sales"><span class="n">'
+                     f'{_money_short(lm["net"])}</span><span class="l">net sales in '
+                     f'{lm_name} &#183; GP {100.0 * lm["gp"] / lm["net"]:.1f}%</span></button>')
+        value_note = (f"&#163; sales and gross profit from Fresho to "
+                      f"{e(value_months[-1]['end'])}")
+    else:
+        kpi_sales, value_note = "", "no &#163; data loaded yet - order volume only"
 
     gap_rows = "".join(
         f"<tr><td>{e(g['customer_name'])}</td><td>{e(g['venue_type'])}</td>"
@@ -719,6 +823,9 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{GAP_ROWS}}", gap_rows or
                      "<tr><td colspan='5'>No gold-tier peer gaps.</td></tr>")
             .replace("{{REPS_CHART}}", _svg_reps(reps))
+            .replace("{{KPI_SALES}}", kpi_sales)
+            .replace("{{VALUE_NOTE}}", value_note)
+            .replace("{{SALES_CHART}}", _svg_monthly(value_months))
             .replace("{{DATA}}", _safe_json(data)))
 
     # The page republishes itself to save state, so it carries a copy of its
@@ -820,6 +927,16 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:500; margin:0 0 .35re
 .tag { display:inline-block; font-family:var(--mono); font-size:10.5px;
   letter-spacing:.11em; color:var(--muted); margin-bottom:.5rem; }
 .lede { font-size:14px; color:var(--muted); margin:0 0 1.1rem; }
+h3 { font-size:14px; font-weight:600; margin:1.6rem 0 .3rem; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.up { color:#1d7a46; } .down { color:#d03b3b; }
+.mbars { display:flex; align-items:flex-end; gap:3px; height:54px; margin:.3rem 0 .2rem; }
+.mbars span { flex:1 1 0; background:#2a78d6; opacity:.55; border-radius:2px 2px 0 0;
+  min-height:1px; }
+.mbars span.mtd { opacity:.25; }
+.mlabs { display:flex; gap:3px; font-size:10px; color:var(--muted);
+  font-family:var(--mono); }
+.mlabs span { flex:1 1 0; text-align:center; }
 .scroll { overflow-x:auto; }
 .chart { width:100%; height:auto; display:block; }
 .chart .lab { font-size:11px; fill:var(--ink); font-family:var(--sans); }
@@ -980,10 +1097,11 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 
 <div class="wrap">
   <h1>Commercial dashboard</h1>
-  <p class="sub">Growing value from existing accounts &#183; data to {{ASOF}} &#183;
-     every measure is order volume, not revenue</p>
+  <p class="sub">Growing value from existing accounts &#183; orders to {{ASOF}} &#183;
+     {{VALUE_NOTE}}</p>
 
   <div class="kpis">
+    {{KPI_SALES}}
     <button class="kpi" data-tab="protect"><span class="n">{{N_DECLINE}}</span>
       <span class="l">active accounts in silent decline</span></button>
     <button class="kpi" data-tab="recover"><span class="n">{{N_WINBACK}}</span>
@@ -997,6 +1115,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   <div class="layout">
     <nav class="nav" aria-label="Sections">
       <span class="ng">CUSTOMERS</span>
+      <button data-tab="sales">Sales &amp; margin</button>
       <button data-tab="accounts">Accounts</button>
       <button data-tab="contacts">Contacts</button>
       <span class="ng">ACQUIRE</span>
@@ -1079,13 +1198,39 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       </div>
     </div>
 
+    <div class="section" id="sec-sales">
+      <div class="play">
+        <div class="tag">SALES &amp; MARGIN</div>
+        <h2>Sales and gross profit</h2>
+        <p class="lede">Net sales (after credits) and gross profit from Fresho's
+          Sales Totals and Gross Profit Margin report, loaded month by month.
+          Figures are per account &#8212; Fresho's report has no product or
+          category split, so margin by category isn't available yet.</p>
+        <div class="kpis" id="sales-kpis"></div>
+        <div class="scroll">{{SALES_CHART}}</div>
+        <h3>Biggest &#163; falls last month</h3>
+        <p class="said">Active gold/silver accounts whose last full month fell
+          25%+ below their previous three-month average (and were worth
+          &#163;1,000+ a month). Upsell-excluded accounts are left out.</p>
+        <div class="scroll" id="sales-falls"></div>
+        <h3>Top accounts by sales</h3>
+        <div class="scroll" id="sales-top"></div>
+        <h3>Lowest margin</h3>
+        <p class="said">Accounts with &#163;10k+ sales in the period, lowest
+          gross profit % first &#8212; worth a pricing look.</p>
+        <div class="scroll" id="sales-lowgp"></div>
+        <h3>By account manager</h3>
+        <div class="scroll" id="sales-reps"></div>
+      </div>
+    </div>
+
     <div class="section" id="sec-accounts">
       <div class="play">
         <div class="tag">ACCOUNTS</div>
         <h2>All accounts</h2>
         <p class="lede">Every customer, with contacts and the full interaction
           history. Add a contact here and it saves for everyone (and unlocks the
-          send buttons). Volume is order lines, never revenue.</p>
+          send buttons). &#163; is net sales from Fresho's GP report.</p>
         <div class="dirbar">
           <input class="act noteinput" id="dirq" type="search"
                  placeholder="Search accounts&#8230;" aria-label="Search accounts">
@@ -1102,6 +1247,10 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
             <option value="gold">Gold</option>
             <option value="silver">Silver</option>
             <option value="bronze">Bronze</option>
+          </select>
+          <select class="act" id="dirsort" aria-label="Sort accounts">
+            <option value="">Sort: name</option>
+            <option value="sales">Sort: sales (&#163;)</option>
           </select>
         </div>
         <p class="said" id="dircount"></p>
@@ -1148,8 +1297,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         <p class="lede">Mirrored from the marketing leads sheet (n8n keeps it
           fed; update Status there). Acquired leads link to their Fresho account
           — automatically when the name matches, by hand below when it doesn't —
-          and pull ongoing order volume. There is no price data, so value is
-          orders and lines, not &#163;.</p>
+          and pull ongoing orders and &#163; sales from Fresho.</p>
         <div class="kpis" id="lead-kpis"></div>
         <div class="scroll" id="lead-ratings"></div>
         <div class="dirbar">
@@ -1186,8 +1334,9 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     </div>
   </div>
 
-  <footer>Rushton's &#183; generated from the reporting layer &#183; volume measures
-    only (no price data exists in the source) &#183; rebuilt with each weekly run.
+  <footer>Rushton's &#183; generated from the reporting layer &#183; order counts
+    are volume; &#163; sales and gross profit are per account per month from
+    Fresho's GP-margin report &#183; rebuilt with each weekly run.
     Outreach drafts follow the client tone guidelines; the tone doc specifies
     WhatsApp, so email variants need sign-off before use.</footer>
 </div>
@@ -1260,7 +1409,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   }
 
   var TABS = ['actions','protect','recover','grow','manage','accounts',
-              'leads','contacts','leadrecs'];
+              'leads','contacts','leadrecs','sales'];
   var curAcct = null;
   function showTab(name){
     if(TABS.indexOf(name) < 0) name = 'actions';
@@ -1426,6 +1575,12 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     else
       h += '<span>quiet <b>' + a.days + '</b> days</span>'
         + '<span>history <b>' + a.lines + '</b> lines</span>';
+    var v = valOf(code);
+    if(v){
+      h += '<span>sales <b>' + moneyK(v.s) + '</b> ' + esc(periodLabel()) + '</span>';
+      if(v.p3 && lastFull()) h += '<span>' + monLabel(lastFull().m) + ' <b>'
+        + money(v.lm) + '</b> vs ' + money(v.p3) + ' avg</span>';
+    }
     h += '</div>';
 
     if(a.stopped && a.stopped.length){
@@ -1530,6 +1685,17 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + esc(v) + '</div></div>' : '';
   }
 
+  function valueFacts(code){
+    var v = valOf(code);
+    if(!v) return '';
+    var lf = lastFull();
+    return fact('SALES ' + periodLabel().toUpperCase(), money(v.s)
+             + (v.g !== null ? ' \u00b7 GP ' + v.g + '%' : ''))
+      + (lf ? fact('NET SALES ' + monLabel(lf.m).toUpperCase(), money(v.lm)
+             + (v.p3 ? ' (3-month avg ' + money(v.p3) + ')' : '')) : '')
+      + (v.aov ? fact('AVG ORDER VALUE', money(v.aov)) : '');
+  }
+
   function renderAccount(code){
     var host = document.getElementById('acct-page');
     var d = dirRow(code);
@@ -1552,7 +1718,8 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + fact('FIRST SEEN', d.first)
       + fact('LAST ORDER', d.last
              + (d.ds !== null && d.ds !== undefined ? ' (' + d.ds + 'd ago)' : ''))
-      + fact('TOTAL ORDERS', orders ? orders + ' (volume, not \u00a3)' : '')
+      + valueFacts(code)
+      + fact('TOTAL ORDERS', orders ? String(orders) : '')
       + fact('ORDER LINES', d.l ? String(d.l) : '')
       + fact('DELIVERY RUN', d.run)
       + fact('PAYMENT TERMS', d.terms !== null && d.terms !== undefined
@@ -1563,6 +1730,8 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + (d.baddr && d.baddr !== d.addr ? fact('BILLING ADDRESS', d.baddr) : '')
       + fact('INTERNAL NOTES', d.inotes)
       + '</div>';
+    var mb = monthBars(code);
+    if(mb) h += '<div class="dh">NET SALES BY MONTH</div>' + mb;
     var sp = sparkSvg(code);
     if(sp) h += '<div class="dh">13-WEEK ORDER PATTERN</div>' + sp;
     var cats = catsOf(code);
@@ -1596,6 +1765,162 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     host.innerHTML = h;
   }
 
+  function valOf(code){ return DATA.value ? DATA.value[code] : null; }
+  function money(v){
+    if(v === null || v === undefined) return '';
+    return '\u00a3' + Math.round(v).toLocaleString('en-GB');
+  }
+  function moneyK(v){
+    if(v === null || v === undefined) return '';
+    if(Math.abs(v) >= 1e6) return '\u00a3' + (v / 1e6).toFixed(2) + 'M';
+    return Math.abs(v) >= 10000 ? '\u00a3' + Math.round(v / 1000) + 'k' : money(v);
+  }
+  function trendHtml(t){
+    if(t === null || t === undefined) return '';
+    return '<span class="' + (t < 0 ? 'down' : 'up') + '">'
+      + (t > 0 ? '+' : '') + Math.round(t) + '%</span>';
+  }
+  var MONTHS = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ');
+  function monLabel(m){ return MONTHS[parseInt(m.slice(5), 10) - 1]; }
+  function periodLabel(){
+    var ms = DATA.valueMonths || [];
+    if(!ms.length) return '';
+    var a = ms[0], b = ms[ms.length - 1];
+    return monLabel(a.m) + '\u2013' + (b.mtd ? parseInt(b.end.slice(8), 10) + ' ' : '')
+      + monLabel(b.m) + ' ' + b.m.slice(0, 4);
+  }
+  function lastFull(){
+    var ms = (DATA.valueMonths || []).filter(function(m){ return !m.mtd; });
+    return ms.length ? ms[ms.length - 1] : null;
+  }
+  function monthBars(code){
+    var v = valOf(code);
+    if(!v || !v.ser || !v.ser.length) return '';
+    var ms = DATA.valueMonths || [];
+    var byM = {};
+    v.ser.forEach(function(x){ byM[x[0]] = x[1]; });
+    var mx = 0;
+    ms.forEach(function(m){ mx = Math.max(mx, byM[m.m] || 0); });
+    if(!mx) return '';
+    return '<div class="mbars" role="img" aria-label="Net sales by month">'
+      + ms.map(function(m){
+          var n = byM[m.m] || 0;
+          return '<span' + (m.mtd ? ' class="mtd"' : '') + ' style="height:'
+            + Math.max(1, Math.round(100 * n / mx)) + '%" title="' + monLabel(m.m)
+            + (m.mtd ? ' to date' : '') + ': ' + money(n) + '"></span>';
+        }).join('') + '</div><div class="mlabs">'
+      + ms.map(function(m){ return '<span>' + monLabel(m.m) + '</span>'; }).join('')
+      + '</div>';
+  }
+  function acctBtn(d){
+    return '<button class="bk" data-goacct="' + esc(d.c) + '">' + esc(d.n) + '</button>';
+  }
+  function tile(n, l){
+    return '<div class="kpi" style="cursor:default"><span class="n">' + n
+      + '</span><span class="l">' + l + '</span></div>';
+  }
+  function table(head, body){
+    return body ? '<table><tr>' + head + '</tr>' + body + '</table>'
+                : '<p class="said">None.</p>';
+  }
+
+  function renderSales(){
+    var kp = document.getElementById('sales-kpis');
+    if(!kp) return;
+    var ms = DATA.valueMonths || [];
+    if(!ms.length){
+      kp.innerHTML = '<p class="said">No \u00a3 data loaded yet. Export Fresho\u2019s '
+        + '\u201cSales Totals and Gross Profit Margin\u201d report one month per file.</p>';
+      return;
+    }
+    var lf = lastFull(), cur = ms[ms.length - 1];
+    var full = ms.filter(function(m){ return !m.mtd; });
+    var prev3 = full.slice(-4, -1);
+    var p3 = prev3.length
+      ? prev3.reduce(function(a, m){ return a + m.net; }, 0) / prev3.length : null;
+    var tot = ms.reduce(function(a, m){ return a + m.net; }, 0);
+    var totgp = ms.reduce(function(a, m){ return a + m.gp; }, 0);
+    var h = '';
+    if(lf){
+      h += tile(moneyK(lf.net), 'net sales in ' + monLabel(lf.m)
+        + (p3 ? ' \u00b7 ' + trendHtml(100 * (lf.net - p3) / p3)
+           + ' vs prior 3-month avg' : ''));
+      h += tile((100 * lf.gp / lf.net).toFixed(1) + '%',
+                'gross margin in ' + monLabel(lf.m));
+    }
+    if(cur.mtd) h += tile(moneyK(cur.net), monLabel(cur.m) + ' to date (to '
+      + parseInt(cur.end.slice(8), 10) + ' ' + monLabel(cur.m) + ')');
+    h += tile(moneyK(tot), 'net sales ' + esc(periodLabel()) + ' \u00b7 GP '
+      + (100 * totgp / tot).toFixed(1) + '%');
+    kp.innerHTML = h;
+
+    var dir = {};
+    (DATA.directory || []).forEach(function(d){ dir[d.c] = d; });
+    var rows = Object.keys(DATA.value || {}).filter(function(c){ return dir[c]; })
+      .map(function(c){ return {d: dir[c], v: DATA.value[c]}; });
+    var mon = lf ? monLabel(lf.m) : 'Last month';
+
+    var falls = rows.filter(function(r){
+      return !r.d.x && /^active/.test(r.d.s) && (r.d.t === 'gold' || r.d.t === 'silver')
+        && r.v.p3 >= 1000 && r.v.tr !== null && r.v.tr <= -25;
+    }).sort(function(a, b){ return (b.v.p3 - b.v.lm) - (a.v.p3 - a.v.lm); })
+      .slice(0, 15);
+    document.getElementById('sales-falls').innerHTML = table(
+      '<th>Account</th><th>Rep</th><th class="num">Prior 3-mo avg</th>'
+        + '<th class="num">' + mon + '</th><th class="num">Change</th>'
+        + '<th class="num">\u00a3/month down</th>',
+      falls.map(function(r){
+        return '<tr><td>' + acctBtn(r.d) + '</td><td>' + esc(r.d.r)
+          + '</td><td class="num">' + money(r.v.p3) + '</td><td class="num">'
+          + money(r.v.lm) + '</td><td class="num">' + trendHtml(r.v.tr)
+          + '</td><td class="num">' + money(r.v.p3 - r.v.lm) + '</td></tr>';
+      }).join(''));
+
+    var top = rows.slice().sort(function(a, b){ return b.v.s - a.v.s; }).slice(0, 15);
+    document.getElementById('sales-top').innerHTML = table(
+      '<th>Account</th><th>Rep</th><th class="num">Sales ' + esc(periodLabel())
+        + '</th><th class="num">GP%</th><th class="num">' + mon
+        + '</th><th class="num">vs 3-mo avg</th>',
+      top.map(function(r){
+        return '<tr><td>' + acctBtn(r.d) + '</td><td>' + esc(r.d.r)
+          + '</td><td class="num">' + money(r.v.s) + '</td><td class="num">'
+          + (r.v.g !== null ? r.v.g + '%' : '') + '</td><td class="num">'
+          + money(r.v.lm) + '</td><td class="num">' + trendHtml(r.v.tr) + '</td></tr>';
+      }).join(''));
+
+    var low = rows.filter(function(r){ return r.v.s >= 10000 && r.v.g !== null; })
+      .sort(function(a, b){ return a.v.g - b.v.g; }).slice(0, 10);
+    document.getElementById('sales-lowgp').innerHTML = table(
+      '<th>Account</th><th>Venue</th><th>Rep</th><th class="num">Sales</th>'
+        + '<th class="num">GP%</th>',
+      low.map(function(r){
+        return '<tr><td>' + acctBtn(r.d) + '</td><td>' + esc(r.d.v) + '</td><td>'
+          + esc(r.d.r) + '</td><td class="num">' + money(r.v.s)
+          + '</td><td class="num">' + r.v.g + '%</td></tr>';
+      }).join(''));
+
+    var reps = {};
+    rows.forEach(function(r){
+      var k = r.d.r || '(unassigned)';
+      var a = reps[k] = reps[k] || {n: 0, s: 0, gp: 0, lm: 0, p3: 0};
+      a.n += 1; a.s += r.v.s || 0; a.gp += (r.v.s || 0) * (r.v.g || 0) / 100;
+      a.lm += r.v.lm || 0; a.p3 += r.v.p3 || 0;
+    });
+    document.getElementById('sales-reps').innerHTML = table(
+      '<th>Account manager</th><th class="num">Accounts</th><th class="num">Sales '
+        + esc(periodLabel()) + '</th><th class="num">GP%</th><th class="num">' + mon
+        + '</th><th class="num">vs 3-mo avg</th>',
+      Object.keys(reps).sort(function(a, b){ return reps[b].s - reps[a].s; })
+        .map(function(k){
+          var a = reps[k];
+          return '<tr><td>' + esc(k) + '</td><td class="num">' + a.n
+            + '</td><td class="num">' + money(a.s) + '</td><td class="num">'
+            + (a.s ? (100 * a.gp / a.s).toFixed(1) + '%' : '') + '</td><td class="num">'
+            + money(a.lm) + '</td><td class="num">'
+            + (a.p3 ? trendHtml(100 * (a.lm - a.p3) / a.p3) : '') + '</td></tr>';
+        }).join(''));
+  }
+
   function renderDir(){
     var host = document.getElementById('dirlist');
     if(!host) return;
@@ -1607,6 +1932,9 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       return (!q || d.n.toLowerCase().indexOf(q) >= 0)
         && (!sf || d.s === sf) && (!tf || d.t === tf);
     });
+    if(((document.getElementById('dirsort') || {}).value || '') === 'sales')
+      rows = rows.slice().sort(function(a, b){
+        return ((valOf(b.c) || {}).s || 0) - ((valOf(a.c) || {}).s || 0); });
     var cnt = document.getElementById('dircount');
     if(cnt) cnt.textContent = rows.length + ' of '
       + (DATA.directory || []).length + ' accounts \u2014 click a card to open it';
@@ -1620,6 +1948,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
            ? '<span class="owner">' + esc(STATE.assign[d.c]) + '</span>' : '')
         + (d.ds !== null && d.ds !== undefined
            ? '<span class="am">' + d.ds + 'd since order</span>' : '')
+        + (valOf(d.c) ? '<span class="am">' + moneyK(valOf(d.c).s) + ' sales</span>' : '')
         + '</span></button>';
     }).join('') || '<p class="said">No accounts match.</p>';
   }
@@ -1807,12 +2136,12 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
                ? ' <span class="muted">(' + esc(l.method) + ')</span>' : '')
             + '</span><span>orders since <b>' + ordersTotal(md.c)
             + '</b></span><span>lines <b>' + md.l + '</b></span>'
+            + (valOf(md.c) ? '<span>sales <b>' + money(valOf(md.c).s) + '</b> '
+               + esc(periodLabel()) + '</span>' : '')
             + (md.first ? '<span>first order <b>' + esc(md.first) + '</b></span>' : '')
             + '</div><div class="acts"><button class="act mini" data-leadclear="'
             + esc(l.sid) + '">Clear link</button>'
-            + '<span class="said" id="say-l-' + esc(l.sid) + '"></span></div>'
-            + '<p class="said">Order value is volume (orders and lines) — '
-            + 'there is no price data.</p>';
+            + '<span class="said" id="say-l-' + esc(l.sid) + '"></span></div>';
         } else {
           var sg = sugFor(l);
           if(sg){
@@ -1933,6 +2262,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     render('list-decline', DATA.declineOrder);
     render('list-winback', DATA.winbackOrder);
     renderDir();
+    renderSales();
     renderLeads();
     renderContacts();
     renderLeadRecs();
@@ -2121,7 +2451,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 
   var dq = document.getElementById('dirq');
   if(dq) dq.addEventListener('input', function(){ renderDir(); });
-  ['dirstatus', 'dirtier'].forEach(function(id){
+  ['dirstatus', 'dirtier', 'dirsort'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.addEventListener('change', function(){ renderDir(); });
   });

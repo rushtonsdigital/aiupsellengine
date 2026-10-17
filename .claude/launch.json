@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\GoodBytes Control Centre\\.venv\\Scripts\\python.exe",
       "runtimeArgs": ["C:\\GoodBytes Control Centre\\app.py"],
       "port": 8765
+    },
+    {
+      "name": "dashboard-preview",
+      "runtimeExecutable": "C:\\Rushtons AI Upsell\\rushtons_engine\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "C:\\Rushtons AI Upsell\\rushtons_engine\\output"],
+      "port": 8766
     }
   ]
 }

@@ -125,9 +125,18 @@ layer** for BI reports and ad-hoc data questions:
 - **Ad-hoc data questions** (a chat with the data) are answered from a Claude
   Code session: load the **`rushtons-analytics`** skill and query through
   `rushtons_engine/query.py::run_sql` (read-only; SELECT-only; auto-LIMIT).
-- Two hard caveats the skill enforces: every measure is **volume, not revenue**
-  (there is no price data), and `quantity` must **never be summed across
-  products** (mixed `qty_type`). Headline on order/line counts.
+- Two hard caveats the skill enforces: £ exists **per account per month only**
+  (`customer_month_values` / `customer_value_metrics`, from Fresho's "Sales
+  Totals and Gross Profit Margin" report — no product/category split), every
+  order-based measure is volume; and `quantity` must **never be summed across
+  products** (mixed `qty_type`).
+- **£ data each week:** in Fresho (Sell > Reports > Sales Totals and Gross
+  Profit Margin, CSV) export the **current month to date** — and the previous
+  month in full in the first week of a month — one calendar month per file,
+  into the `--data-dir`. `run_weekly.py` loads them (a fuller month-to-date
+  replaces an older one; a multi-month file is skipped as it would double-count).
+  Backfill/one-off: `python ingest.py values <file-or-folder>`. Claude can do
+  the export itself in the user's Chrome (logged-in Fresho, Rushton's company).
 - New env var `REPORTING_DATABASE_URL` (in `.env`) holds the read-only role's
   connection string; it falls back to `DATABASE_URL` on local SQLite.
 - **Commercial plays**: the `rushtons-commercial-plays` skill holds four named

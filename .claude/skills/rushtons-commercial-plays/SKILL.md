@@ -23,9 +23,10 @@ Run queries through `rushtons_engine/query.py::run_sql` (see the
 `rushtons-analytics` skill for mechanics and the data caveats). Charts go
 through the visualize `show_widget` tool.
 
-**The one rule that governs every number here: volume, not revenue.** There is
-no price data. Measures are order counts and order lines. Never present these as
-£, and never sum `quantity` across products.
+**The rule that governs every number here:** order counts and order lines are
+volume — never present them as £, and never sum `quantity` across products. £
+exists only per account per month (`customer_value_metrics`, from Fresho's GP
+report): use it to size a play ("£14k/month down"), never to relabel volume.
 
 **A data trap these queries already handle:** the most recent `week_start` is
 usually a *partial* week (the data ends mid-week), which fakes a decline for
@@ -367,8 +368,7 @@ biggest segment whitespace. Then let each chart carry its own play.
   the page land in `state.leadMatch`, harvested by `interactions.py harvest`.
   Rating normalised 1-5 ('Good'→4); test/personal/internal rows get
   `excluded_reason` and drop out of KPIs. Hannah's brief (Gmail,
-  2026-08-06) is the spec; **her "£ value" needs a price feed — everything is
-  volume until then, and the page says so.**
+  2026-08-06) is the spec; linked leads now show £ sales from the GP report.
 - Weekly procedure gains one step: re-download the sheet
   (`https://docs.google.com/spreadsheets/d/1DmIupaaEzIQ8qQDadpwq1HJob0_X2fIwbq0PdXX5SDM/export?format=csv`)
   and run `leads.py sync` before the dashboard rebuild.
