@@ -50,3 +50,21 @@ Surfaced by the first step-3 pass and recorded in `data_notes`; awaiting Hannah/
   for them.
 - The four `FCC …` accounts (Fine Cheese Co) all classify identically as venue_type `Unknown`, and
   several cheese retailers were offered `Dairy and Chilled` as a gap — a poor fit by construction.
+
+## 2026-10-14/15 — Pitch what's in season; the pool now says so (Laurence, Hannah)
+
+Laurence had to swap two out-of-season picks before sending (Scottish girolles ->
+yellow chanterelles, IOW heritage tomatoes -> French). Fresho has no season tag, so
+Hannah agreed a monthly seasonal list built from the produce list + the market report
+(`rushtons_engine/seasonal/seasonal_YYYY-MM.csv`, read by `seasonal.py`).
+
+What that means for picking:
+- Pool items flagged **`"season": "peak"`** (with a `season_note`) are at their best
+  this month and lead the pool. **Prefer them** — a season-led line is also what
+  Laurence's simpler message (Option B) is built around ("we're in the season of …").
+- Lines the list marks **out** never reach the pool, so you can't pick them.
+- Unflagged lines aren't necessarily out of season — the list is a first pass. Use
+  judgement, and never pitch something you'd expect to be out of season in London
+  this month even if it's in the pool; put it in `data_notes` so the list gets fixed.
+- No seasonal file for the month = no flags. Say so in the run summary so the month's
+  list gets written (from that month's market report).

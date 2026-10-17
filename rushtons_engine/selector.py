@@ -26,6 +26,7 @@ import sqlalchemy as sa
 import classify
 import config
 import db
+import seasonal
 
 log = logging.getLogger(__name__)
 
@@ -246,10 +247,17 @@ def build_product_pool(conn, category: str, as_of: date,
         base = base_code(r.product_code)
         if base in excluded_bases:
             continue
+        # This month's seasonal list (seasonal.py): 'out' lines never reach the
+        # pool; 'peak' lines are flagged for the drafter and lead the pool.
+        season, season_note = seasonal.status(r.product_name, as_of)
+        if season == "out":
+            continue
         item = {"code": r.product_code, "name": r.product_name,
                 "product_group": r.raw_product_group,
                 "buyers_14d": int(r.buyers),
                 "last_sold": str(r.last_seen) if r.last_seen else None}
+        if season:
+            item["season"], item["season_note"] = season, season_note
         # One row per product: the format that actually moves, else the
         # simplest code — deterministic either way.
         current = best.get(base)
@@ -257,7 +265,10 @@ def build_product_pool(conn, category: str, as_of: date,
                 (current["buyers_14d"], item["code"]):
             best[base] = item
 
-    ranked = sorted(best.values(), key=lambda p: (-p["buyers_14d"], p["code"]))
+    # At-its-best lines lead (so they always survive the POOL_PER_GAP cut);
+    # within each group, what's moving first.
+    ranked = sorted(best.values(), key=lambda p: (p.get("season") != "peak",
+                                                 -p["buyers_14d"], p["code"]))
     return ranked[:config.POOL_PER_GAP]
 
 

@@ -102,6 +102,14 @@ Notes:
 - If ingest fails on an unknown product group, add it deliberately to
   `rushtons_engine/categories.py` (never bucket silently) and mention it to
   the user.
+- **Seasonal list (monthly):** `rushtons_engine/seasonal/seasonal_YYYY-MM.csv`
+  (regex `pattern`, `status` peak|out, `note`, `source`) — peak lines lead each
+  product pool and are flagged; out lines are dropped. Write the next month's
+  file in the first run of each month from that month's market report (Hannah
+  emails it) plus the team's corrections; no file = no season flags (warned).
+- **Tiers:** gold/silver/bronze rank on the last 3 complete months of £ sales
+  (falls back to order lines with no £ data); upsell-excluded accounts don't
+  take gold slots. Hand ratings the team confirms go in `config.TIER_OVERRIDES`.
 - Tests: `rushtons_engine\.venv\Scripts\python.exe -m pytest -q` (run from
   `rushtons_engine/`); regression suite needs `REGRESSION_DATA_DIR` set to the
   folder with the June exports.

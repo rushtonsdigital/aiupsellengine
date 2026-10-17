@@ -766,6 +766,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "grp": r["group_affiliation"] or "",
         "stage": r["account_stage"] or "",
         "x": 1 if r["prestige"] == "Excluded" else 0,
+        "vip": 1 if r["prestige"] == "VIP" else 0,
     } for r in _rows(Q_DIRECTORY, limit=1000)]
 
     values, value_months = _load_values()
@@ -1709,6 +1710,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + '</div>';
     h += '<div class="ar"><span class="chip">' + esc(d.v) + '</span>'
       + (d.t ? '<span class="chip">' + esc(d.t) + '</span>' : '')
+      + (d.vip ? '<span class="chip">VIP</span>' : '')
       + '<span class="chip">' + esc(String(d.s).replace(/_/g, ' ')) + '</span>'
       + (d.grp ? '<span class="chip">' + esc(d.grp) + '</span>' : '')
       + (d.stage ? '<span class="chip">' + esc(d.stage) + '</span>' : '')
@@ -1942,6 +1944,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       return '<button class="acard" data-goacct="' + esc(d.c) + '">'
         + '<span class="an">' + esc(d.n) + '</span>'
         + '<span class="am">' + esc(d.v) + (d.t ? ' \u00b7 ' + esc(d.t) : '')
+        + (d.vip ? ' \u00b7 VIP' : '')
         + ' \u00b7 ' + esc(String(d.s).replace(/_/g, ' ')) + '</span>'
         + '<span class="ar">' + statusChip(d.c)
         + (STATE.assign[d.c]

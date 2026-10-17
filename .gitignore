@@ -10,3 +10,6 @@ Rushtons AI Upsell Engine - Meeting Briefing.docx
 # Office lock/temp files
 ~$*
 ~WRL*.tmp
+
+# Monthly seasonal lists are curated config, not customer data
+!rushtons_engine/seasonal/*.csv
