@@ -141,6 +141,26 @@ create table if not exists customer_month_values (
   primary key (customer_code, month)
 );
 
+-- Order-history overview for the account page (reporting.refresh_sales).
+create table if not exists customer_product_metrics (
+  customer_code text,
+  product_code  text,
+  line_count    int,
+  first_bought  date,
+  last_bought   date,
+  primary key (customer_code, product_code)
+);
+
+create table if not exists customer_order_profile (
+  customer_code    text primary key,
+  orders_7d        int,
+  orders_28d       int,
+  orders_total     int,
+  last_order_date  date,
+  last_order_lines int,
+  weekday_orders   text          -- JSON [Mon..Sun] distinct orders
+);
+
 -- Per-account value summary, rebuilt each run by reporting.refresh_values.
 create table if not exists customer_value_metrics (
   customer_code     text primary key,
@@ -157,7 +177,7 @@ create table if not exists customer_value_metrics (
   mtd_through       date,
   orders_last_month int,
   aov_last_month    numeric,
-  series            text          -- JSON [[YYYY-MM, net, gp], ...]
+  series            text          -- JSON [[YYYY-MM, net, gp, credits], ...]
 );
 
 -- gap_categories / chosen_products JSON on recommendations, flattened in Python
@@ -212,7 +232,12 @@ create index if not exists idx_interactions_customer
 -- Applied to existing tables by db._migrate_customers_crm:
 --   legal_entity_name text, delivery_address text, billing_address text,
 --   delivery_run_code text, payment_term_days integer, pricing_level text,
---   internal_notes text
+--   internal_notes text, picking_instructions text,
+--   negotiated_prices_group text, discount text, rebate text, minimum_order text
+-- Deliberately NOT stored: standing_delivery_instructions (gate/alarm codes -
+-- driver information, never for a sales page) and the contact-notes field,
+-- which is personal data loaded into customer_contacts only once the
+-- dashboard sits behind a login.
 
 -- Marketing leads, mirrored weekly from the Google Sheet the n8n flow feeds.
 -- The sheet stays the source of truth for lead fields; matching + value

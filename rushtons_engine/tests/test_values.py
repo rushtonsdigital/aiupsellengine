@@ -102,7 +102,7 @@ def test_refresh_values_summary(conn, tmp_path):
     assert float(grow.sales_mtd) == 700 and grow.mtd_through == dt.date(2026, 10, 17)
     assert float(grow.sales_12m) == 5700 and float(grow.gp_pct_12m) == 40.0
     assert grow.orders_last_month == 4 and float(grow.aov_last_month) == 500
-    assert json.loads(grow.series)[0] == ["2026-06", 1000, 400]
+    assert json.loads(grow.series)[0] == ["2026-06", 1000, 400, 0]
     # no row in the last month is a real £0, not "its own last active month"
     assert float(gone.sales_last_month) == 0 and float(gone.trend_pct) == -100.0
     assert gone.aov_last_month is None
