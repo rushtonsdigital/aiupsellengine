@@ -53,8 +53,17 @@ def refresh_sales(conn, as_of) -> tuple[int, int]:
 
     cat: dict[tuple, dict] = {}
     prod: dict[str, dict] = {}
+    cprod: dict[tuple, list] = {}           # (customer, product) -> [lines, first, last]
+    orders: dict[str, dict] = {}            # customer -> {order_number: (date, lines)}
     for code, order_number, product_code, ddate, qty, category in rows:
         q = float(qty or 0)
+
+        cp = cprod.setdefault((code, product_code), [0, ddate, ddate])
+        cp[0] += 1
+        cp[1], cp[2] = min(cp[1], ddate), max(cp[2], ddate)
+        o = orders.setdefault(code, {})
+        d, n = o.get(order_number, (ddate, 0))
+        o[order_number] = (d, n + 1)
 
         c = cat.setdefault((code, category), {
             "lines": 0, "orders": set(), "qty": 0.0,
@@ -97,8 +106,34 @@ def refresh_sales(conn, as_of) -> tuple[int, int]:
             "first_sold": a["first"], "last_sold": a["last"],
         } for pc, a in sorted(prod.items())])
 
-    log.info("reporting sales refreshed: %d category rows, %d product rows",
-             len(cat), len(prod))
+    conn.execute(db.customer_product_metrics.delete())
+    if cprod:
+        conn.execute(db.customer_product_metrics.insert(), [{
+            "customer_code": code, "product_code": pc, "line_count": v[0],
+            "first_bought": v[1], "last_bought": v[2],
+        } for (code, pc), v in sorted(cprod.items())])
+
+    conn.execute(db.customer_order_profile.delete())
+    profile = []
+    for code, o in sorted(orders.items()):
+        dated = sorted(o.values())
+        last_date = dated[-1][0]
+        days = [0] * 7
+        for d, _ in dated:
+            days[d.weekday()] += 1
+        profile.append({
+            "customer_code": code,
+            "orders_7d": sum(1 for d, _ in dated if d > as_of - timedelta(days=7)),
+            "orders_28d": sum(1 for d, _ in dated if d > as_of - timedelta(days=28)),
+            "orders_total": len(dated), "last_order_date": last_date,
+            "last_order_lines": sum(n for d, n in dated if d == last_date),
+            "weekday_orders": json.dumps(days),
+        })
+    if profile:
+        conn.execute(db.customer_order_profile.insert(), profile)
+
+    log.info("reporting sales refreshed: %d category rows, %d product rows, "
+             "%d account-product rows", len(cat), len(prod), len(cprod))
     return len(cat), len(prod)
 
 
@@ -157,7 +192,8 @@ def refresh_values(conn) -> int:
     """
     t = db.customer_month_values
     rows = conn.execute(sa.select(t.c.customer_code, t.c.month, t.c.period_end,
-                                  t.c.net_sales, t.c.gross_profit)).fetchall()
+                                  t.c.net_sales, t.c.gross_profit,
+                                  t.c.credits)).fetchall()
     conn.execute(db.customer_value_metrics.delete())
     if not rows:
         log.info("reporting values: no GP-margin data loaded")
@@ -187,15 +223,16 @@ def refresh_values(conn) -> int:
     for r in rows:
         if r.month >= window_start:
             by_cust.setdefault(r.customer_code, {})[r.month] = (
-                float(r.net_sales or 0), float(r.gross_profit or 0))
+                float(r.net_sales or 0), float(r.gross_profit or 0),
+                -float(r.credits or 0))
 
     pct = lambda num, den: round(100.0 * num / den, 1) if den else None
     out = []
     for code, months in sorted(by_cust.items()):
         sales = sum(v[0] for v in months.values())
         gp = sum(v[1] for v in months.values())
-        s_last, g_last = months.get(last, (0.0, 0.0)) if last else (0.0, 0.0)
-        prev_avg = (sum(months.get(m, (0.0, 0.0))[0] for m in prev3) / len(prev3)
+        s_last, g_last = months.get(last, (0.0, 0.0, 0.0))[:2] if last else (0.0, 0.0)
+        prev_avg = (sum(months.get(m, (0.0, 0.0, 0.0))[0] for m in prev3) / len(prev3)
                     if prev3 else None)
         n_orders = orders_n.get(code)
         out.append({
@@ -206,12 +243,12 @@ def refresh_values(conn) -> int:
             "gp_pct_last_month": pct(g_last, s_last),
             "sales_prev3_avg": round(prev_avg, 2) if prev_avg is not None else None,
             "trend_pct": pct(s_last - prev_avg, prev_avg) if prev_avg else None,
-            "sales_mtd": round(months.get(mtd_month, (0.0, 0.0))[0], 2) if mtd_month else None,
+            "sales_mtd": round(months.get(mtd_month, (0.0,))[0], 2) if mtd_month else None,
             "mtd_through": mtd_through,
             "orders_last_month": n_orders,
             "aov_last_month": round(s_last / n_orders, 2) if n_orders else None,
-            "series": json.dumps([[m.strftime("%Y-%m"), round(v[0], 2), round(v[1], 2)]
-                                  for m, v in sorted(months.items())]),
+            "series": json.dumps([[m.strftime("%Y-%m"), round(v[0], 2), round(v[1], 2),
+                                   round(v[2], 2)] for m, v in sorted(months.items())]),
         })
     conn.execute(db.customer_value_metrics.insert(), out)
     log.info("reporting values refreshed: %d accounts, last complete month %s",

@@ -230,9 +230,14 @@ def ingest_customers_file(conn, path: Path) -> int:
             # CRM enrichment — captured when the master carries the column,
             # skipped (leaving any existing value) when it doesn't.
             for field in ("legal_entity_name", "delivery_address",
-                          "billing_address", "pricing_level", "internal_notes"):
+                          "billing_address", "pricing_level", "internal_notes",
+                          "negotiated_prices_group", "discount", "rebate"):
                 if field in cols:
                     values[field] = (raw[cols[field]] or "").strip() or None
+            for field, src in (("picking_instructions", "standing_picking_instructions"),
+                               ("minimum_order", "minimum_order_amount_for_freight")):
+                if src in cols:
+                    values[field] = (raw[cols[src]] or "").strip() or None
             if "delivery_run_code" in cols:
                 values["delivery_run_code"] = \
                     _clean_code(raw[cols["delivery_run_code"]]) or None

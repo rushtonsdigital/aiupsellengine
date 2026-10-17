@@ -182,7 +182,8 @@ select h.customer_code, h.customer_name, h.venue_type, h.size_band,
        h.days_since_last_order, coalesce(v.total_lines, 0) as total_lines,
        c.legal_entity_name, c.delivery_address, c.billing_address,
        c.delivery_run_code, c.payment_term_days, c.pricing_level,
-       c.internal_notes, c.group_affiliation, c.account_stage, h.prestige
+       c.internal_notes, c.group_affiliation, c.account_stage, h.prestige,
+       c.picking_instructions, c.negotiated_prices_group, c.rebate
 from v_customer_health h
 join customers c on c.customer_code = h.customer_code
 left join vol v on v.customer_code = h.customer_code
@@ -406,7 +407,8 @@ def _load_values() -> tuple[dict, list]:
             "lm": _num(r["sales_last_month"]), "gl": _num(r["gp_pct_last_month"], 1),
             "p3": _num(r["sales_prev3_avg"]), "tr": _num(r["trend_pct"]),
             "mtd": _num(r["sales_mtd"]), "aov": _num(r["aov_last_month"]),
-            "ser": [[m, round(n), round(g)] for m, n, g in json.loads(r["series"] or "[]")],
+            "ser": [[x[0], round(x[1]), round(x[2]), round(x[3]) if len(x) > 3 else 0]
+                    for x in json.loads(r["series"] or "[]")],
         } for r in _rows(Q_VALUES, limit=5000)}
         months = [{
             "m": r["month"].strftime("%Y-%m") if hasattr(r["month"], "strftime")
@@ -453,6 +455,77 @@ def _svg_monthly(months: list) -> str:
                  f'text-anchor="middle">{label}</text>')
     p.append("</svg>")
     return "".join(p)
+
+
+Q_PROFILE = """
+select customer_code, orders_7d, orders_28d, orders_total, last_order_date,
+       last_order_lines, weekday_orders from customer_order_profile
+"""
+
+Q_TOP_PRODUCTS = """
+select customer_code, product_code, line_count, last_bought from (
+  select m.*, row_number() over (partition by customer_code
+                                 order by line_count desc, product_code) rn
+  from customer_product_metrics m) x
+where rn <= 10
+"""
+
+Q_STOPPED_PRODUCTS = """
+select customer_code, product_code, line_count, last_bought from (
+  select m.*, row_number() over (partition by customer_code
+                                 order by line_count desc, product_code) rn
+  from customer_product_metrics m
+  where m.line_count >= 3 and m.last_bought < date '{cutoff}') x
+where rn <= 6
+"""
+
+
+def _load_history(as_of) -> tuple[dict, dict]:
+    """Order-history overview per account: counts, last order, usual order
+    days, top 10 products and lines they've stopped buying (3+ times before,
+    nothing in 28 days). Product names go in a shared index to keep the page
+    small. ({code: {...}}, {product_index: name})."""
+    try:
+        names = {r["product_code"]: r["product_name"] for r in
+                 _rows("select product_code, product_name from products", limit=10000)}
+        idx: dict[str, int] = {}
+        pid = lambda pc: idx.setdefault(pc, len(idx))
+        hist = {}
+        for r in _rows(Q_PROFILE, limit=5000):
+            hist[r["customer_code"]] = {
+                "w": r["orders_7d"], "m": r["orders_28d"], "t": r["orders_total"],
+                "last": str(r["last_order_date"] or ""), "lastn": r["last_order_lines"],
+                "days": json.loads(r["weekday_orders"] or "[]"), "top": [], "stop": []}
+        for r in _rows(Q_TOP_PRODUCTS, limit=20000):
+            h = hist.get(r["customer_code"])
+            if h is not None:
+                h["top"].append([pid(r["product_code"]), r["line_count"], str(r["last_bought"])])
+        cutoff = as_of - timedelta(days=28)
+        for r in _rows(Q_STOPPED_PRODUCTS.format(cutoff=cutoff), limit=20000):
+            h = hist.get(r["customer_code"])
+            if h is not None:
+                h["stop"].append([pid(r["product_code"]), r["line_count"], str(r["last_bought"])])
+        return hist, {i: names.get(pc, pc) for pc, i in idx.items()}
+    except Exception:
+        log.exception("order-history summary unavailable - account pages skip it")
+        return {}, {}
+
+
+def _load_venue_notes() -> dict:
+    """The live web research the drafting step records on each pitched venue
+    (drafts_<date>.json -> customer_review), newest per account. {code: [date, text]}."""
+    notes = {}
+    for path in sorted(config.EXPORT_DIR.glob("drafts_????-??-??.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        accounts = data.get("accounts", data) if isinstance(data, dict) else {}
+        for code, a in (accounts.items() if isinstance(accounts, dict) else []):
+            review = isinstance(a, dict) and (a.get("customer_review") or "").strip()
+            if review:
+                notes[code] = [path.stem[7:], review]
+    return notes
 
 
 def _load_drafts() -> dict:
@@ -767,9 +840,13 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "stage": r["account_stage"] or "",
         "x": 1 if r["prestige"] == "Excluded" else 0,
         "vip": 1 if r["prestige"] == "VIP" else 0,
+        "pick": r["picking_instructions"] or "",
+        "npg": r["negotiated_prices_group"] or "",
+        "rebate": (r["rebate"] if r["rebate"] not in (None, "", "0", "0.0") else ""),
     } for r in _rows(Q_DIRECTORY, limit=1000)]
 
     values, value_months = _load_values()
+    history, product_names = _load_history(as_of)
     leads_data = _load_leads()
     _suggest_lead_matches(leads_data, directory, contacts)
 
@@ -790,6 +867,9 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "leads": leads_data,
         "value": values,
         "valueMonths": value_months,
+        "hist": history,
+        "prodNames": product_names,
+        "venueNotes": _load_venue_notes(),
     }
 
     complete = [m for m in value_months if not m["mtd"]]
@@ -938,6 +1018,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .mlabs { display:flex; gap:3px; font-size:10px; color:var(--muted);
   font-family:var(--mono); }
 .mlabs span { flex:1 1 0; text-align:center; }
+.note2 { background:var(--raise); border:.5px solid var(--line); border-radius:8px;
+  padding:.6rem .8rem; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.days { display:flex; gap:4px; margin:.2rem 0 .6rem; }
+.days span { flex:0 0 auto; font-family:var(--mono); font-size:11px; padding:2px 7px;
+  border-radius:6px; border:.5px solid var(--line); color:var(--muted); }
+.days span.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
 .scroll { overflow-x:auto; }
 .chart { width:100%; height:auto; display:block; }
 .chart .lab { font-size:11px; fill:var(--ink); font-family:var(--sans); }
@@ -1686,6 +1772,63 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + esc(v) + '</div></div>' : '';
   }
 
+  var DAYN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function pname(i){ return (DATA.prodNames || {})[i] || '?'; }
+  function historyBlock(code){
+    var h = (DATA.hist || {})[code];
+    if(!h) return '';
+    var o = '<div class="dh">ORDER HISTORY</div><div class="facts">'
+      + '<span>last 7 days <b>' + h.w + '</b></span>'
+      + '<span>last 28 days <b>' + h.m + '</b></span>'
+      + '<span>since ' + esc(firstOrderDate()) + ' <b>' + h.t + '</b> orders</span>'
+      + (h.last ? '<span>last order <b>' + esc(h.last) + '</b> (' + h.lastn + ' lines)</span>' : '')
+      + '</div>';
+    if(h.days && h.days.length){
+      var tot = h.days.reduce(function(a, b){ return a + b; }, 0) || 1;
+      o += '<div class="days" aria-label="Usual order days">' + h.days.map(function(n, i){
+        return '<span' + (n / tot >= 0.12 ? ' class="on"' : '') + ' title="' + n
+          + ' orders">' + DAYN[i] + '</span>'; }).join('') + '</div>';
+    }
+    if(h.top && h.top.length){
+      o += '<div class="dh">TOP PRODUCTS (order lines)</div><div class="chips">'
+        + h.top.map(function(x){ return '<span class="chip">' + esc(pname(x[0]))
+          + ' \u00b7 ' + x[1] + '</span>'; }).join('') + '</div>';
+    }
+    if(h.stop && h.stop.length){
+      o += '<div class="dh">PRODUCTS THEY\u2019VE STOPPED BUYING</div><div class="chips">'
+        + h.stop.map(function(x){ return '<span class="chip">' + esc(pname(x[0]))
+          + ' \u00b7 last ' + esc(x[2]) + '</span>'; }).join('') + '</div>';
+    }
+    return o;
+  }
+  function firstOrderDate(){
+    var f = (DATA.weeks || [])[0];
+    return f ? f.split('-').reverse().join('/') : 'June';
+  }
+  function marginBlock(code){
+    var v = valOf(code);
+    if(!v || !v.ser || !v.ser.length) return '';
+    var cr = v.ser.reduce(function(a, x){ return a + (x[3] || 0); }, 0);
+    var net = v.ser.reduce(function(a, x){ return a + x[1]; }, 0);
+    var o = '<div class="mlabs">' + (DATA.valueMonths || []).map(function(m){
+      var x = v.ser.filter(function(y){ return y[0] === m.m; })[0];
+      return '<span title="gross margin">' + (x && x[1] ? Math.round(100 * x[2] / x[1]) + '%' : '\u2013')
+        + '</span>'; }).join('') + '</div>';
+    o += '<p class="said">Gross margin % by month (row above). Credits '
+      + money(cr) + (net ? ' \u2014 ' + (100 * cr / (net + cr)).toFixed(1) + '% of sales' : '')
+      + ' (refunds and returns; a rough signal of service issues).</p>';
+    return o;
+  }
+  function prefBlock(d){
+    var o = '';
+    if(d.pick) o += '<div class="dh">PRODUCE PREFERENCES (Fresho picking notes)</div>'
+      + '<div class="note2">' + esc(d.pick) + '</div>';
+    var vn = (DATA.venueNotes || {})[d.c];
+    if(vn) o += '<div class="dh">ABOUT THE VENUE (web research, ' + esc(vn[0]) + ')</div>'
+      + '<div class="note2">' + esc(vn[1]) + '</div>';
+    return o;
+  }
+
   function valueFacts(code){
     var v = valOf(code);
     if(!v) return '';
@@ -1727,13 +1870,17 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + fact('PAYMENT TERMS', d.terms !== null && d.terms !== undefined
              ? d.terms + ' days' : '')
       + fact('PRICING LEVEL', d.pricing)
+      + fact('NEGOTIATED PRICES', d.npg)
+      + fact('REBATE', d.rebate ? d.rebate + '%' : '')
       + fact('LEGAL ENTITY', d.legal)
       + fact('DELIVERY ADDRESS', d.addr)
       + (d.baddr && d.baddr !== d.addr ? fact('BILLING ADDRESS', d.baddr) : '')
       + fact('INTERNAL NOTES', d.inotes)
       + '</div>';
     var mb = monthBars(code);
-    if(mb) h += '<div class="dh">NET SALES BY MONTH</div>' + mb;
+    if(mb) h += '<div class="dh">NET SALES BY MONTH</div>' + mb + marginBlock(code);
+    h += prefBlock(d);
+    h += historyBlock(code);
     var sp = sparkSvg(code);
     if(sp) h += '<div class="dh">13-WEEK ORDER PATTERN</div>' + sp;
     var cats = catsOf(code);

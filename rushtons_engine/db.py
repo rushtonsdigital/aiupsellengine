@@ -40,6 +40,12 @@ customers = sa.Table(
     sa.Column("payment_term_days", sa.Integer),
     sa.Column("pricing_level", sa.Text),
     sa.Column("internal_notes", sa.Text),
+    # Fresho master: produce preferences + commercial terms (2026-10-17)
+    sa.Column("picking_instructions", sa.Text),   # standing_picking_instructions
+    sa.Column("negotiated_prices_group", sa.Text),
+    sa.Column("discount", sa.Text),
+    sa.Column("rebate", sa.Text),
+    sa.Column("minimum_order", sa.Text),          # minimum_order_amount_for_freight
     sa.Column("updated_at", sa.DateTime(timezone=True)),
 )
 
@@ -178,6 +184,29 @@ customer_month_values = sa.Table(
     sa.Column("ingested_at", sa.DateTime(timezone=True)),
 )
 
+# Per-account x product purchase history and a per-account order profile, for
+# the account page's order-history overview (top products, stopped lines,
+# order days). Rebuilt each run by reporting.refresh_sales from the same scan.
+customer_product_metrics = sa.Table(
+    "customer_product_metrics", metadata,
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("product_code", sa.Text, primary_key=True),
+    sa.Column("line_count", sa.Integer),
+    sa.Column("first_bought", sa.Date),
+    sa.Column("last_bought", sa.Date),
+)
+
+customer_order_profile = sa.Table(
+    "customer_order_profile", metadata,
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("orders_7d", sa.Integer),
+    sa.Column("orders_28d", sa.Integer),
+    sa.Column("orders_total", sa.Integer),
+    sa.Column("last_order_date", sa.Date),
+    sa.Column("last_order_lines", sa.Integer),
+    sa.Column("weekday_orders", sa.Text),   # JSON [Mon..Sun] distinct orders
+)
+
 # Per-account value summary, rebuilt each run by reporting.refresh_values (the
 # dashboard and chat path read this, never the monthly rows directly).
 customer_value_metrics = sa.Table(
@@ -196,7 +225,7 @@ customer_value_metrics = sa.Table(
     sa.Column("mtd_through", sa.Date),
     sa.Column("orders_last_month", sa.Integer), # from orders, for avg order value
     sa.Column("aov_last_month", sa.Numeric),
-    sa.Column("series", sa.Text),               # JSON [[YYYY-MM, net, gp], ...]
+    sa.Column("series", sa.Text),               # JSON [[YYYY-MM, net, gp, credits], ...]
 )
 
 # One row per (run_date, customer_code, category): the gap_categories /
@@ -306,7 +335,9 @@ _CUSTOMER_CRM_COLS = {
     "legal_entity_name": "text", "delivery_address": "text",
     "billing_address": "text", "delivery_run_code": "text",
     "payment_term_days": "integer", "pricing_level": "text",
-    "internal_notes": "text",
+    "internal_notes": "text", "picking_instructions": "text",
+    "negotiated_prices_group": "text", "discount": "text", "rebate": "text",
+    "minimum_order": "text",
 }
 
 

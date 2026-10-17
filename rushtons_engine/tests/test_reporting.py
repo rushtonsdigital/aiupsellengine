@@ -127,3 +127,25 @@ def test_reporting_views_apply_on_postgres():
         for v in views:
             if v.startswith("v_"):
                 conn.exec_driver_sql(f"select * from {v} limit 1")
+
+
+def test_order_history_summaries(conn):
+    """customer_product_metrics + customer_order_profile feed the account
+    page's order-history overview."""
+    import json
+    add_customer(conn, "C1")
+    add_product(conn, "P1")
+    add_product(conn, "P2")
+    mon = dt.date(2026, 6, 29)                       # a Monday, 1 day before AS_OF
+    n = add_order(conn, "C1", "P1", mon)
+    add_order(conn, "C1", "P2", mon, order_number=n)
+    add_order(conn, "C1", "P1", mon - dt.timedelta(days=14))   # a Monday, 2 weeks back
+    add_order(conn, "C1", "P2", dt.date(2026, 5, 1), state="Cancelled")  # not counted
+    reporting.refresh_sales(conn, AS_OF)
+    cp = {r.product_code: r for r in conn.execute(sa.select(db.customer_product_metrics))}
+    assert cp["P1"].line_count == 2 and cp["P1"].first_bought == mon - dt.timedelta(days=14)
+    assert cp["P2"].line_count == 1
+    prof = conn.execute(sa.select(db.customer_order_profile)).one()
+    assert (prof.orders_7d, prof.orders_28d, prof.orders_total) == (1, 2, 2)
+    assert prof.last_order_date == mon and prof.last_order_lines == 2
+    assert json.loads(prof.weekday_orders) == [2, 0, 0, 0, 0, 0, 0]
