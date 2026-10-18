@@ -36,6 +36,7 @@ import html
 import json
 import logging
 from datetime import date, timedelta
+from pathlib import Path
 
 import config
 import help_section
@@ -46,6 +47,10 @@ TARGETABLE = list(config.TARGETABLE_CATEGORIES)
 log = logging.getLogger(__name__)
 
 OUT_NAME = "commercial_dashboard.html"
+# Rushton's logo (client-supplied SVG), recoloured to currentColor so it
+# follows the theme accent in light and dark mode.
+LOGO_SVG = (Path(__file__).resolve().parent / "assets" / "rushtons_logo.svg").read_text(
+    encoding="utf-8")
 DRAFTS_NAME = "outreach_drafts.json"
 
 # Rushton's brand (rushtonsgreengrocer.co.uk): green #007946, pistachio
@@ -915,6 +920,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
                      "<tr><td colspan='5'>No gold-tier peer gaps.</td></tr>")
             .replace("{{REPS_CHART}}", _svg_reps(reps))
             .replace("{{KPI_SALES}}", kpi_sales)
+            .replace("{{LOGO}}", LOGO_SVG)
             .replace("{{VALUE_NOTE}}", value_note)
             .replace("{{SALES_CHART}}", _svg_monthly(all_months))
             .replace("{{HELP}}", help_section.help_html(
@@ -955,7 +961,7 @@ FRAG_SRC = r"""<title>Rushton's Commercial Dashboard</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap">
 <style>
 :root {
-  --bg:#FFF7EE; --surface:#ffffff; --raise:#FBF6EC; --ink:#141414; --muted:#55595F;
+  --bg:#ffffff; --surface:#ffffff; --raise:#FFF7EE; --ink:#141414; --muted:#55595F;
   --line:rgba(0,0,0,.12); --grid:#E4E6CC; --accent:#007946; --on-accent:#ffffff;
   --brand2:#DDE0BB;
   --sans:"Open Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
@@ -979,9 +985,10 @@ body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans)
   line-height:1.6; -webkit-font-smoothing:antialiased; }
 .wrap { max-width:1080px; margin:0 auto; padding:2.2rem 1.25rem 4rem; }
 body { border-top:6px solid var(--accent); }
-.brandmark { color:var(--accent); font-weight:700; letter-spacing:.14em; font-size:12px;
-  text-transform:uppercase; margin:0 0 .4rem; }
+.brandmark { color:var(--accent); margin:0 0 .9rem; }
+.brandmark .logo { display:block; height:34px; width:auto; }
 h1 { font-family:var(--serif); font-size:28px; font-weight:700; margin:0 0 .3rem;
+  color:var(--accent);
   letter-spacing:-.01em; text-wrap:balance; }
 h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35rem;
   text-wrap:balance; }
@@ -1209,7 +1216,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 
 <div class="wrap">
-  <p class="brandmark">Rushton&#8217;s</p>
+  <div class="brandmark">{{LOGO}}</div>
   <h1>Commercial dashboard</h1>
   <p class="sub">Growing value from existing accounts &#183; orders to {{ASOF}} &#183;
      {{VALUE_NOTE}}</p>
