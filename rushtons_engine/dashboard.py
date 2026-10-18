@@ -38,6 +38,7 @@ import logging
 from datetime import date, timedelta
 
 import config
+import help_section
 import query
 
 TARGETABLE = list(config.TARGETABLE_CATEGORIES)
@@ -47,12 +48,15 @@ log = logging.getLogger(__name__)
 OUT_NAME = "commercial_dashboard.html"
 DRAFTS_NAME = "outreach_drafts.json"
 
-GOLD, SILVER = "#c98500", "#2a78d6"
+# Rushton's brand (rushtonsgreengrocer.co.uk): green #007946, pistachio
+# #DDE0BB, cream #FFF7EE. GREEN carries data series; GOLD/SILVER mean tiers.
+GREEN = "#007946"
+GOLD, SILVER = "#c98500", "#8a9199"
 AMBER, RED, GREY = "#c98500", "#d03b3b", "#898781"
 
-RAMP = [(91, "#0C447C", "#E6F1FB"), (76, "#185FA5", "#E6F1FB"),
-        (56, "#378ADD", "#042C53"), (31, "#85B7EB", "#042C53"),
-        (11, "#B5D4F4", "#0C447C"), (0, "#E6F1FB", "#0C447C")]
+RAMP = [(91, "#004F2D", "#FFF7EE"), (76, "#007946", "#FFF7EE"),
+        (56, "#4D9E78", "#06301C"), (31, "#9CC7AE", "#06301C"),
+        (11, "#D3E5D6", "#004F2D"), (0, "#F1F4E6", "#004F2D")]
 
 HEAT_COLS = [
     ("Fruits", "Fruit"), ("Herbs", "Herbs"), ("Salads", "Salads"),
@@ -250,10 +254,10 @@ def _sparkline(series) -> str:
         for i, (_, v) in enumerate(series) if v == 0)
     return (f'<svg viewBox="0 0 {w} {h}" class="spark" role="img" '
             f'aria-label="Weekly order counts over the last {n} weeks">'
-            f'<polygon points="{area}" fill="{SILVER}" opacity="0.13"/>'
-            f'<polyline points="{line}" fill="none" stroke="{SILVER}" '
+            f'<polygon points="{area}" fill="{GREEN}" opacity="0.13"/>'
+            f'<polyline points="{line}" fill="none" stroke="{GREEN}" '
             f'stroke-width="1.6" stroke-linejoin="round"/>{zeros}'
-            f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="3" fill="{SILVER}"/></svg>')
+            f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="3" fill="{GREEN}"/></svg>')
 
 
 def _svg_dumbbell(rows) -> str:
@@ -363,7 +367,7 @@ def _svg_reps(rows) -> str:
         p.append(f'<text x="{lab_w-10}" y="{y+13}" class="lab" text-anchor="end">'
                  f'{e(r["rep"])[:22]}</text>')
         p.append(f'<rect x="{lab_w}" y="{y}" width="{bw:.0f}" height="18" rx="4" '
-                 f'fill="{SILVER}" opacity="0.35"/>')
+                 f'fill="{GREEN}" opacity="0.35"/>')
         p.append(f'<rect x="{lab_w}" y="{y}" width="{lw:.0f}" height="18" rx="4" fill="{RED}"/>')
         p.append(f'<text x="{lab_w+bw+10:.0f}" y="{y+13}" class="tick">'
                  f'{acc} accounts &#183; {lap} lapsed ({int(r["lapsed_pct"] or 0)}%) &#183; '
@@ -422,6 +426,9 @@ def _load_values() -> tuple[dict, list]:
     for m in months:   # month to date when the export stops before month end
         y, mo = map(int, m["m"].split("-"))
         m["mtd"] = m["end"] < str(date(y + mo // 12, mo % 12 + 1, 1) - timedelta(days=1))
+    # Per-account figures (sales_12m...) cover the latest 12 months; the page's
+    # labels and totals must use the same window. The chart keeps every month
+    # so this year's month sits beside last year's.
     return per, months
 
 
@@ -438,11 +445,11 @@ def _svg_monthly(months: list) -> str:
          f'"Net sales and gross profit margin by month">',
          '<defs><pattern id="mtd" width="6" height="6" patternUnits="userSpaceOnUse" '
          'patternTransform="rotate(45)"><rect width="3" height="6" '
-         f'fill="{SILVER}" opacity="0.45"/></pattern></defs>']
+         f'fill="{GREEN}" opacity="0.45"/></pattern></defs>']
     for i, m in enumerate(months):
         x = 10 + i * slot + (slot - bw) / 2
         bh = (m["net"] / mx) * (base - top)
-        fill = "url(#mtd)" if m["mtd"] else SILVER
+        fill = "url(#mtd)" if m["mtd"] else GREEN
         gp_pct = 100.0 * m["gp"] / m["net"] if m["net"] else 0
         p.append(f'<rect x="{x:.0f}" y="{base - bh:.0f}" width="{bw:.0f}" '
                  f'height="{bh:.0f}" rx="3" fill="{fill}"/>')
@@ -451,6 +458,8 @@ def _svg_monthly(months: list) -> str:
         p.append(f'<text x="{x + bw / 2:.0f}" y="{base - bh - 5:.0f}" class="lab" '
                  f'text-anchor="middle">{gp_pct:.1f}%</text>')
         label = names[int(m["m"][5:]) - 1] + (" to " + m["end"][8:] if m["mtd"] else "")
+        if m["m"][:4] != months[-1]["m"][:4]:
+            label += " &#8217;" + m["m"][2:4]
         p.append(f'<text x="{x + bw / 2:.0f}" y="{base + lab_h}" class="tick" '
                  f'text-anchor="middle">{label}</text>')
     p.append("</svg>")
@@ -845,7 +854,8 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "rebate": (r["rebate"] if r["rebate"] not in (None, "", "0", "0.0") else ""),
     } for r in _rows(Q_DIRECTORY, limit=1000)]
 
-    values, value_months = _load_values()
+    values, all_months = _load_values()
+    value_months = all_months[-12:]
     history, product_names = _load_history(as_of)
     leads_data = _load_leads()
     _suggest_lead_matches(leads_data, directory, contacts)
@@ -879,7 +889,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
                  "October November December").split()
         lm_name = names[int(lm["m"][5:]) - 1]
         kpi_sales = (f'<button class="kpi" data-tab="sales"><span class="n">'
-                     f'{_money_short(lm["net"])}</span><span class="l">net sales in '
+                     f'{_money_short(lm["net"])}</span> <span class="l">net sales in '
                      f'{lm_name} &#183; GP {100.0 * lm["gp"] / lm["net"]:.1f}%</span></button>')
         value_note = (f"&#163; sales and gross profit from Fresho to "
                       f"{e(value_months[-1]['end'])}")
@@ -906,7 +916,9 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{REPS_CHART}}", _svg_reps(reps))
             .replace("{{KPI_SALES}}", kpi_sales)
             .replace("{{VALUE_NOTE}}", value_note)
-            .replace("{{SALES_CHART}}", _svg_monthly(value_months))
+            .replace("{{SALES_CHART}}", _svg_monthly(all_months))
+            .replace("{{HELP}}", help_section.help_html(
+                value_months, str(_rows("select min(delivery_date) as d from orders")[0]["d"])))
             .replace("{{DATA}}", _safe_json(data)))
 
     # The page republishes itself to save state, so it carries a copy of its
@@ -934,51 +946,57 @@ HEAD_SRC = """<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rushton's Commercial Dashboard</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?\
-family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&\
-family=IBM+Plex+Serif:wght@400;500&display=swap">
+family=Open+Sans:wght@400;500;600;700&display=swap">
 </head><body>"""
 
 TAIL_SRC = "</body></html>"
 
 FRAG_SRC = r"""<title>Rushton's Commercial Dashboard</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap">
 <style>
 :root {
-  --bg:#f6f8f4; --surface:#ffffff; --raise:#fbfcfa; --ink:#151915; --muted:#5f6862;
-  --line:rgba(20,28,22,.13); --grid:#dfe4dc; --accent:#185FA5;
-  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-  --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
-  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  --bg:#FFF7EE; --surface:#ffffff; --raise:#FBF6EC; --ink:#141414; --muted:#55595F;
+  --line:rgba(0,0,0,.12); --grid:#E4E6CC; --accent:#007946; --on-accent:#ffffff;
+  --brand2:#DDE0BB;
+  --sans:"Open Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --serif:var(--sans);
+  --mono:var(--sans);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg:#111512; --surface:#1a1f1b; --raise:#212722; --ink:#eaeee8; --muted:#98a29a;
-    --line:rgba(255,255,255,.13); --grid:#2a312c; --accent:#85B7EB;
+    --bg:#0E1712; --surface:#15211A; --raise:#1B2A21; --ink:#F2F1E8; --muted:#A6AE9F;
+    --line:rgba(255,255,255,.14); --grid:#2A3A2F; --accent:#7CCB9F; --on-accent:#0E1712;
+    --brand2:#3B4A35;
   }
 }
 :root[data-theme="dark"] {
-  --bg:#111512; --surface:#1a1f1b; --raise:#212722; --ink:#eaeee8; --muted:#98a29a;
-  --line:rgba(255,255,255,.13); --grid:#2a312c; --accent:#85B7EB;
+  --bg:#0E1712; --surface:#15211A; --raise:#1B2A21; --ink:#F2F1E8; --muted:#A6AE9F;
+  --line:rgba(255,255,255,.14); --grid:#2A3A2F; --accent:#7CCB9F; --on-accent:#0E1712;
+  --brand2:#3B4A35;
 }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
   line-height:1.6; -webkit-font-smoothing:antialiased; }
 .wrap { max-width:1080px; margin:0 auto; padding:2.2rem 1.25rem 4rem; }
-h1 { font-family:var(--serif); font-size:28px; font-weight:500; margin:0 0 .3rem;
+body { border-top:6px solid var(--accent); }
+.brandmark { color:var(--accent); font-weight:700; letter-spacing:.14em; font-size:12px;
+  text-transform:uppercase; margin:0 0 .4rem; }
+h1 { font-family:var(--serif); font-size:28px; font-weight:700; margin:0 0 .3rem;
   letter-spacing:-.01em; text-wrap:balance; }
-h2 { font-family:var(--serif); font-size:20px; font-weight:500; margin:0 0 .35rem;
+h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35rem;
   text-wrap:balance; }
 .sub { color:var(--muted); font-size:14px; margin:0 0 1.6rem; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:12px; margin:0 0 1.6rem; }
 .kpi { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
+  border-top:4px solid var(--brand2);
   padding:1rem 1.1rem; cursor:pointer; text-align:left; font:inherit;
   color:inherit; }
 .kpi:hover { border-color:var(--accent); }
 .kpi:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.kpi .n { font-family:var(--mono); font-size:31px; font-weight:500;
+.kpi .n { font-family:var(--mono); font-size:30px; font-weight:700; color:var(--accent);
   letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1.2; }
-.kpi .l { font-size:13px; color:var(--muted); line-height:1.45; }
+.kpi .l { display:block; font-size:13px; color:var(--muted); line-height:1.45; }
 .layout { display:block; }
 .nav { display:flex; gap:6px; overflow-x:auto; position:sticky; top:0;
   background:var(--bg); padding:.6rem 0; z-index:5; margin:0 0 1rem; }
@@ -987,8 +1005,8 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:500; margin:0 0 .35re
   cursor:pointer; white-space:nowrap; }
 .nav button:hover { border-color:var(--accent); }
 .nav button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.nav button[aria-current="true"] { background:var(--ink); color:var(--bg);
-  border-color:var(--ink); }
+.nav button[aria-current="true"] { background:var(--accent); color:var(--on-accent);
+  border-color:var(--accent); font-weight:600; }
 .ng { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
   color:var(--muted); align-self:center; white-space:nowrap; padding:0 4px; }
 @media (min-width: 960px) {
@@ -1005,14 +1023,22 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:500; margin:0 0 .35re
 .section.on { display:block; }
 .play { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
   padding:1.4rem 1.5rem; margin:0 0 1.5rem; }
-.tag { display:inline-block; font-family:var(--mono); font-size:10.5px;
-  letter-spacing:.11em; color:var(--muted); margin-bottom:.5rem; }
+.tag { display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
+  letter-spacing:.11em; color:var(--accent); margin-bottom:.5rem; }
 .lede { font-size:14px; color:var(--muted); margin:0 0 1.1rem; }
 h3 { font-size:14px; font-weight:600; margin:1.6rem 0 .3rem; }
+details.help { border-bottom:.5px solid var(--line); }
+details.help summary { cursor:pointer; padding:.75rem 0; font-weight:600; font-size:15px;
+  color:var(--ink); }
+details.help summary:hover { color:var(--accent); }
+details.help summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.helpbody { font-size:14px; line-height:1.65; padding:0 0 .9rem; max-width:72ch; }
+.helpbody ul { padding-left:1.2rem; margin:.3rem 0; }
+.helpbody li { margin:.25rem 0; }
 td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
-.up { color:#1d7a46; } .down { color:#d03b3b; }
+.up { color:var(--accent); } .down { color:#d03b3b; }
 .mbars { display:flex; align-items:flex-end; gap:3px; height:54px; margin:.3rem 0 .2rem; }
-.mbars span { flex:1 1 0; background:#2a78d6; opacity:.55; border-radius:2px 2px 0 0;
+.mbars span { flex:1 1 0; background:var(--accent); opacity:.55; border-radius:2px 2px 0 0;
   min-height:1px; }
 .mbars span.mtd { opacity:.25; }
 .mlabs { display:flex; gap:3px; font-size:10px; color:var(--muted);
@@ -1121,15 +1147,15 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .tld { font-family:var(--mono); color:var(--muted); font-size:11px;
   white-space:nowrap; }
 .tlk { font-weight:500; white-space:nowrap; }
-.tlk.good { color:#16a34a; }
+.tlk.good { color:var(--accent); }
 .tls { color:var(--muted); min-width:0; }
 .pend { font-size:10.5px; color:var(--muted); opacity:.75; }
 .noteinput { flex:1; min-width:180px; cursor:text; }
 .status { font-family:var(--mono); font-size:10.5px; padding:2px 8px;
   border-radius:20px; white-space:nowrap; border:.5px solid var(--line);
   color:var(--muted); font-variant-numeric:tabular-nums; }
-.status.sent { color:#2a78d6; border-color:#2a78d6; }
-.status.good { color:#16a34a; border-color:#16a34a; }
+.status.sent { color:var(--ink); border-color:var(--ink); }
+.status.good { color:var(--accent); border-color:var(--accent); font-weight:600; }
 .comms { border:.5px solid var(--line); border-radius:10px; padding:.7rem .9rem;
   margin-top:.3rem; }
 .ctabs { display:flex; gap:6px; margin-bottom:.6rem; }
@@ -1183,6 +1209,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 </style>
 
 <div class="wrap">
+  <p class="brandmark">Rushton&#8217;s</p>
   <h1>Commercial dashboard</h1>
   <p class="sub">Growing value from existing accounts &#183; orders to {{ASOF}} &#183;
      {{VALUE_NOTE}}</p>
@@ -1214,6 +1241,8 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       <button data-tab="recover">Recover</button>
       <button data-tab="grow">Peer gaps</button>
       <button data-tab="manage">Manage</button>
+      <span class="ng">HELP</span>
+      <button data-tab="help">Help &amp; definitions</button>
     </nav>
 
     <div class="content">
@@ -1270,18 +1299,28 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
           supplies this today?" &#8212; pale columns are category campaigns.</p>
         <div class="scroll">{{HEATMAP}}</div>
         <div class="legend"><span>whitespace</span>
-          <span class="sw" style="background:#E6F1FB"></span>
-          <span class="sw" style="background:#B5D4F4"></span>
-          <span class="sw" style="background:#85B7EB"></span>
-          <span class="sw" style="background:#378ADD"></span>
-          <span class="sw" style="background:#185FA5"></span>
-          <span class="sw" style="background:#0C447C"></span>
+          <span class="sw" style="background:#F1F4E6"></span>
+          <span class="sw" style="background:#D3E5D6"></span>
+          <span class="sw" style="background:#9CC7AE"></span>
+          <span class="sw" style="background:#4D9E78"></span>
+          <span class="sw" style="background:#007946"></span>
+          <span class="sw" style="background:#004F2D"></span>
           <span>saturated</span><span>&#183; % of active accounts buying</span></div>
         <div class="scroll"><table>
           <tr><th>Gold account</th><th>Type</th><th>Not buying</th>
               <th>Peer adoption</th><th>Rep</th></tr>
           {{GAP_ROWS}}
         </table></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-help">
+      <div class="play">
+        <div class="tag">HELP</div>
+        <h2>How to read this dashboard</h2>
+        <p class="lede">Definitions and rules behind every number, for anyone who
+          wasn't part of building it. Click a question to open it.</p>
+        {{HELP}}
       </div>
     </div>
 
@@ -1496,7 +1535,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   }
 
   var TABS = ['actions','protect','recover','grow','manage','accounts',
-              'leads','contacts','leadrecs','sales'];
+              'leads','contacts','leadrecs','sales','help'];
   var curAcct = null;
   function showTab(name){
     if(TABS.indexOf(name) < 0) name = 'actions';
@@ -1551,7 +1590,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         + a.prior + ' \u2192 ' + a.recent + '</span>';
     }
     var g = a.tier === 'gold';
-    var col = g ? '#c98500' : '#2a78d6';
+    var col = g ? '#c98500' : '#8a9199';
     return '<span class="pill" style="background:'+col+'1f;color:'+col+'">'
       + a.days + 'd quiet</span>';
   }
@@ -1726,11 +1765,11 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     var lp = pts[n - 1];
     return '<svg viewBox="0 0 ' + w + ' ' + h + '" class="chart" '
       + 'style="max-width:460px" role="img" aria-label="Weekly order counts">'
-      + '<polygon points="' + area + '" fill="#2a78d6" opacity="0.13"/>'
-      + '<polyline points="' + line + '" fill="none" stroke="#2a78d6" '
+      + '<polygon points="' + area + '" fill="#007946" opacity="0.13"/>'
+      + '<polyline points="' + line + '" fill="none" stroke="#007946" '
       + 'stroke-width="2" stroke-linejoin="round"/>' + zeros
       + '<circle cx="' + lp[0].toFixed(1) + '" cy="' + lp[1].toFixed(1)
-      + '" r="3.5" fill="#2a78d6"/></svg>';
+      + '" r="3.5" fill="#007946"/></svg>';
   }
 
   function catsOf(code){
@@ -1935,7 +1974,8 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     var ms = DATA.valueMonths || [];
     if(!ms.length) return '';
     var a = ms[0], b = ms[ms.length - 1];
-    return monLabel(a.m) + '\u2013' + (b.mtd ? parseInt(b.end.slice(8), 10) + ' ' : '')
+    return monLabel(a.m) + (a.m.slice(0, 4) !== b.m.slice(0, 4) ? ' ' + a.m.slice(0, 4) : '')
+      + '\u2013' + (b.mtd ? parseInt(b.end.slice(8), 10) + ' ' : '')
       + monLabel(b.m) + ' ' + b.m.slice(0, 4);
   }
   function lastFull(){
@@ -2131,7 +2171,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(cnt) cnt.textContent = act.length;
     host.innerHTML = act.map(function(c){
       var own = ownerOf(c.id);
-      var tc = c.tier === 'gold' ? '#c98500' : '#2a78d6';
+      var tc = c.tier === 'gold' ? '#c98500' : '#8a9199';
       var isOpen = !!openCards[c.id];
       var a = DATA.accounts[c.id];
       var body = a ? detail(c.id, a, 'c') : slimDetail(c, 'c');
@@ -2195,7 +2235,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     return new Date(l.date) < cut;
   }
   function leadChip(st){
-    var c = st === 'Acquired' ? '#16a34a' : st === 'Contacted' ? '#2a78d6'
+    var c = st === 'Acquired' ? '#007946' : st === 'Contacted' ? '#c98500'
       : st === 'New' ? '#c98500' : '#898781';
     return '<span class="pill" style="background:' + c + '1f;color:' + c + '">'
       + esc(st || '—') + '</span>';
