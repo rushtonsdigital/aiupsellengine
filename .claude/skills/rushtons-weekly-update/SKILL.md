@@ -56,6 +56,14 @@ Then **act on it** before step 3:
 - Tone feedback / rewrite pairs → `.claude/skills/rushtons-comms/feedback-log.md` and the best
   pairs into `examples.md`.
 - Confirmed hand tiers → `config.TIER_OVERRIDES`.
+- **Record last week's results** (every week — easy to miss): for the previous run date,
+  set `recommendations.status` to `sent` / `rejected`, and add ledger rows with
+  `interactions._insert` (idempotent `source_id` like `<source>|<code>|sent`):
+  `whatsapp_sent` for each message sent (note which option, A or B), a `note` with the
+  reason for each account not sent, and a `note` for every reply (yes/no, boxes sent).
+  Republish the dashboard afterwards so the account timelines show them.
+- Then **check every item in the team's latest emails off** against what's now in place,
+  and list any you didn't action (and why) in the report.
 - Anything ambiguous (e.g. "all caterers" — event only, or corporate too?) → don't guess;
   list it in the report as a question for Jose.
 
