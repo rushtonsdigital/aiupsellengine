@@ -48,7 +48,11 @@ anything) is left for them, not a list of what they should go and do.
 
 ## Weekly update procedure
 
-When the user asks to "run the weekly update" (or similar):
+When the user asks to "run the weekly update" (or similar): **load the
+`rushtons-weekly-update` skill and follow it step by step** — it is the full,
+current procedure (feedback review, Fresho downloads in the browser, load,
+select, pick + write, apply, outreach drafts, state-preserving dashboard
+republish, hand-over email draft). The summary below is background only:
 
 1. Confirm the new Fresho exports are present (the 6 daily
    `*product_totals_by_customer_*.csv` files, plus optionally a fresh
