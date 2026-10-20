@@ -329,7 +329,7 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
             conn.execute(db.customers.update()
                          .where(db.customers.c.customer_code == code).values(**vals))
         # trading since well before the grace window
-        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=90), weeks=13)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
     add_customer(conn, "NEWBIE")           # first order a fortnight ago
     weekly_orders(conn, "NEWBIE", ["VEG-1"], AS_OF - dt.timedelta(days=13), weeks=2)
     codes = {r["customer_code"] for r in _classify_and_select(conn)}

@@ -189,10 +189,12 @@ HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)"}
 # revisit" (Hannah, re Zara Goalen). Also covers Schmaltz Production.
 PARKED_VENUE_TYPES = {"Event catering"}
 # Brand-new accounts aren't upsold yet ("Brand new account, no need to upsell
-# yet" - Laurence, Around the Cluck & Kossoffs). An account is new when its
-# first order is under this many days before the run date. Accounts already
-# trading when our data window opened are never "new".
-NEW_ACCOUNT_GRACE_DAYS = 42
+# yet" - Laurence, Around the Cluck & Kossoffs). Raised from 6 weeks to three
+# months at the 2026-10-19 Hannah catch-up ("so that they can stabilize";
+# "suggestions can only happen after the first three months"). An account is
+# new when its first order is under this many days before the run date.
+# Accounts already trading when our data window opened are never "new".
+NEW_ACCOUNT_GRACE_DAYS = 91
 
 # Ranking weights: score components are each normalised to 0..1 (see select.py).
 WEIGHT_ENGAGEMENT = 3.0    # orders per week, capped
