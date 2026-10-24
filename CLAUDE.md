@@ -1,5 +1,8 @@
 # Rushton's AI Upsell Engine — instructions for Claude Code
 
+**New session? Read `docs/ROADMAP.md` first** — current status, the prioritised feature list,
+and open questions.
+
 The engine lives in `rushtons_engine/` (Python venv at `rushtons_engine/.venv`).
 
 The weekly run is four steps, and the split matters:
