@@ -313,7 +313,32 @@ leads = sa.Table(
     sa.Column("analysed_at", sa.DateTime(timezone=True)),
     sa.Column("notified_at", sa.DateTime(timezone=True)),
     sa.Column("status_changed_at", sa.DateTime(timezone=True)),
+    sa.Column("owner", sa.Text),           # who is working the lead (LEAD_TEAM)
+    sa.Column("next_follow_up", sa.Date),  # set by hand; null = stage rule
+    sa.Column("lost_reason", sa.Text),     # when status = Discarded (Lost)
 )
+
+# Everything the team does to a lead — stage moves, calls, emails, notes,
+# follow-up dates, owner changes. Written from the dashboard (harvested
+# weekly via leads.apply_activity_log; later straight from the logged-in app),
+# idempotent by event_id. No FK: the legacy sheet loader rewrites lead rows.
+lead_activities = sa.Table(
+    "lead_activities", metadata,
+    sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"),
+              primary_key=True, autoincrement=True),
+    sa.Column("event_id", sa.Text, unique=True, nullable=False),
+    sa.Column("source_id", sa.Text, nullable=False),   # leads.source_id
+    sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    # stage|note|call|email|whatsapp|visit|sample|follow_up|owner
+    sa.Column("stage", sa.Text),           # kind=stage: the new stage
+    sa.Column("note", sa.Text),            # free text; lost reason; new owner
+    sa.Column("follow_up_on", sa.Date),
+    sa.Column("actor", sa.Text),
+    sa.Column("source", sa.Text),          # dashboard | app
+)
+sa.Index("idx_lead_activities_lead",
+         lead_activities.c.source_id, lead_activities.c.occurred_at)
 
 _engine = None
 
@@ -370,12 +395,14 @@ _LEAD_INTAKE_COLS = {
     "intake": "text", "received_at": "timestamptz", "page_url": "text",
     "heard_about": "text", "analysed_at": "timestamptz",
     "notified_at": "timestamptz", "status_changed_at": "timestamptz",
+    "owner": "text", "next_follow_up": "date", "lost_reason": "text",
 }
 
 
 def _migrate_leads(engine: sa.Engine) -> None:
-    """Add the direct-intake columns to an existing leads table (same pattern
-    as _migrate_customers_crm). Rows that predate them came from the sheet."""
+    """Add the direct-intake and pipeline columns to an existing leads table
+    (same pattern as _migrate_customers_crm). Rows that predate the intake
+    columns came from the sheet."""
     inspector = sa.inspect(engine)
     if not inspector.has_table("leads"):
         return
@@ -388,8 +415,9 @@ def _migrate_leads(engine: sa.Engine) -> None:
             if engine.dialect.name != "postgresql":
                 typ = "timestamp" if typ == "timestamptz" else typ
             conn.execute(sa.text(f"alter table leads add column {name} {typ}"))
-        conn.execute(sa.text(
-            "update leads set intake = 'sheet' where intake is null"))
+        if "intake" in dict(todo):
+            conn.execute(sa.text(
+                "update leads set intake = 'sheet' where intake is null"))
         if engine.dialect.name == "postgresql":
             conn.execute(sa.text("notify pgrst, 'reload schema'"))
 

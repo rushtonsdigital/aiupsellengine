@@ -143,8 +143,9 @@ It hard-fails on any code outside a pool — fix the drafts, never the pool.
 2. **Harvest the live page state** — `Artifact` read
    `https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW` with `path: index.html`, extract
    `<script id="dash-state">` to `state.json`, then
-   `python interactions.py harvest state.json` (this also folds in lead Status changes and
-   lead-to-account links made on the page).
+   `python interactions.py harvest state.json` (this also files the leads work done on the
+   page — stage moves, calls, notes, follow-up dates, owners (`state.leadLog` →
+   `lead_activities`) — and lead-to-account links).
    **Leads** need no download: the website forms post straight into the `leads` table via the
    `lead-intake` Edge Function (AI-rated, sales team emailed). Run
    `python rushtons_engine\leads.py retry` to finish any web lead whose AI write-up or email

@@ -88,6 +88,12 @@ The `lead-intake` Edge Function is deployed but the forms still post to n8n. To 
    Function) — AI research + rating on arrival and a sales-team email; n8n and the sheet are
    retired; Status is set on the dashboard. New leads still reach the dashboard only at the
    weekly republish until #1 (live data) lands.
+   *Built 25 Oct (PR on `feat/leads-crm`):* a page per lead, the funnel (New → Contacted →
+   Qualified → Sample/trial → Won / Lost with reason), owners, one-tap call/email/visit/sample
+   logging and notes, and a Follow-ups tab driven by per-stage reminder rules
+   (`config.LEAD_*`). Actions are credited to a "You are" name until logins (#1) replace it.
+   Next for leads: email reminders to owners (daily digest via the Edge Function + Supabase
+   cron, once Resend is set up) and live updates once the page reads Supabase directly.
 8. **Seasonal list from the full produce list** — waiting on Harry/Laurence; then monthly from
    the market report PDF.
 

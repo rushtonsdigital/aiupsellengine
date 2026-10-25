@@ -367,9 +367,17 @@ biggest segment whitespace. Then let each chart carry its own play.
   with Claude + web search (same write-up sections and 1-5 rating the n8n flow
   produced), and emails the sales team via Resend (`LEAD_NOTIFY_TO`; test/internal leads
   go to `LEAD_NOTIFY_INTERNAL_TO` only). `python leads.py retry` finishes any
-  web lead whose write-up or email failed. Status is set on the dashboard
-  (`state.leadStatus`) and manual account links in `state.leadMatch`, both
-  harvested by `interactions.py harvest`. Acquired leads auto-link to Fresho
+  web lead whose write-up or email failed. Each lead has its own page
+  (`#lead/<source_id>`): stage stepper (funnel New → Contacted → Qualified →
+  Sample/trial → Won, or Lost with a reason — config.LEAD_STAGES), next
+  follow-up (hand-set date, else config.LEAD_FOLLOW_UP_DAYS after the last
+  touch; LEAD_QUIET_DAYS untouched = "gone quiet"), owner, and one-tap logging
+  of calls/emails/WhatsApp/visits/samples/notes, all credited to the "You
+  are" name (config.LEAD_TEAM, per device until logins). The Follow-ups tab
+  groups overdue / today / next 7 days / gone quiet. Page actions land in
+  `state.leadLog`; `interactions.py harvest` files them into
+  `lead_activities` and updates the lead (leads.apply_activity_log). Manual
+  account links stay in `state.leadMatch`. Acquired leads auto-link to Fresho
   accounts (contact email/phone first, then name similarity ≥0.84). Rating
   normalised 1-5 ('Good'→4); test/personal/internal rows get `excluded_reason`
   and drop out of KPIs. Hannah's brief (Gmail, 2026-08-06) is the spec; linked

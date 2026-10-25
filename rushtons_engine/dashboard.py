@@ -213,8 +213,14 @@ from customer_category_metrics order by customer_code, line_count desc
 Q_LEADS = """
 select source_id, name, business, email, phone, lead_source, analysis, notes,
        submitted_at, status, rating, type, details, excluded_reason,
-       matched_customer_code, match_method, intake, heard_about, page_url
+       matched_customer_code, match_method, intake, heard_about, page_url,
+       received_at, status_changed_at, owner, next_follow_up, lost_reason
 from leads order by submitted_at desc nulls last, received_at desc nulls last
+"""
+
+Q_LEAD_ACTS = """
+select source_id, occurred_at, kind, stage, note, follow_up_on, actor
+from lead_activities order by occurred_at
 """
 
 
@@ -629,15 +635,24 @@ def _load_cats_all() -> tuple[list, dict]:
 
 
 def _load_leads() -> list:
-    """Leads for the dashboard, analysis trimmed (full text stays in the DB)."""
+    """Leads for the dashboard: fields, pipeline state and activity history
+    (acts = [at, kind, stage, note, due, actor], oldest first)."""
     try:
         rows = _rows(Q_LEADS, limit=2000)
     except Exception:
         log.warning("leads table not readable yet - leads pane empty")
         return []
+    acts = {}
+    try:
+        for a in _rows(Q_LEAD_ACTS, limit=50000):
+            acts.setdefault(a["source_id"], []).append([
+                a["occurred_at"].isoformat() if a["occurred_at"] else "",
+                a["kind"], a["stage"] or "", a["note"] or "",
+                str(a["follow_up_on"] or ""), a["actor"] or ""])
+    except Exception:
+        log.warning("lead_activities not readable yet - no lead history")
     out = []
     for r in rows:
-        analysis = (r["analysis"] or "").strip()
         out.append({
             "sid": r["source_id"], "name": r["name"] or "",
             "biz": r["business"] or "", "email": r["email"] or "",
@@ -647,11 +662,19 @@ def _load_leads() -> list:
             "excl": r["excluded_reason"] or "",
             "matched": r["matched_customer_code"] or "",
             "method": r["match_method"] or "",
-            "analysis": analysis[:900] + ("…" if len(analysis) > 900 else ""),
-            "notes": (r["notes"] or "")[:200],
-            "details": (r["details"] or "")[:200],
+            "analysis": (r["analysis"] or "").strip(),
+            "notes": (r["notes"] or "")[:500],
+            "details": (r["details"] or "")[:500],
             "web": r["intake"] == "web",
             "heard": r["heard_about"] or "",
+            "page": r["page_url"] or "",
+            "recv": r["received_at"].isoformat() if r["received_at"] else "",
+            "chg": (r["status_changed_at"].isoformat()
+                    if r["status_changed_at"] else ""),
+            "owner": r["owner"] or "",
+            "next": str(r["next_follow_up"] or ""),
+            "lost": r["lost_reason"] or "",
+            "acts": acts.get(r["source_id"], []),
         })
     return out
 
@@ -882,6 +905,11 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "cats": cats,
         "targetable": TARGETABLE,
         "leads": leads_data,
+        "leadStages": [list(st) for st in config.LEAD_STAGES],
+        "leadFollowUp": config.LEAD_FOLLOW_UP_DAYS,
+        "leadQuietDays": config.LEAD_QUIET_DAYS,
+        "leadLost": config.LEAD_LOST_REASONS,
+        "leadTeam": config.LEAD_TEAM,
         "value": values,
         "valueMonths": value_months,
         "hist": history,
@@ -1214,6 +1242,53 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .excl { opacity:.55; }
 .matchform { display:flex; flex-wrap:wrap; gap:6px; margin-top:.5rem; }
 .matchform input { flex:1 1 220px; min-width:0; }
+.navn { font-family:var(--mono); font-size:10.5px; margin-left:6px; padding:0 6px;
+  border-radius:10px; background:#d03b3b; color:#fff; }
+.navn:empty { display:none; }
+.whoami { display:flex; align-items:center; gap:6px; margin-left:auto; }
+.funnel { display:flex; flex-direction:column; gap:5px; margin:.3rem 0 .4rem; }
+.frow { display:grid; grid-template-columns:120px minmax(0,1fr) 92px; gap:10px;
+  align-items:center; font-size:12.5px; background:none; border:0; padding:2px 0;
+  font:inherit; color:inherit; text-align:left; cursor:pointer; width:100%; }
+.frow:hover .flab { color:var(--accent); }
+.frow:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.ftrack { height:16px; background:var(--raise); border-radius:4px; overflow:hidden; }
+.fbar { display:block; height:100%; background:var(--accent); opacity:.75; border-radius:4px; }
+.fnum { font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--muted);
+  white-space:nowrap; text-align:right; }
+.fnum b { color:var(--ink); font-weight:600; }
+.flost { font-size:12px; color:var(--muted); margin-top:.3rem; }
+.lhead { display:flex; align-items:center; gap:10px; width:100%; padding:10px 4px;
+  background:none; border:0; color:inherit; font:inherit; text-align:left;
+  cursor:pointer; flex-wrap:wrap; }
+.lhead:hover { background:var(--raise); }
+.lhead:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.lhead .rname { flex:1 1 180px; }
+.lhead .dmeta { white-space:normal; min-width:0; overflow-wrap:anywhere; }
+.due { font-family:var(--mono); font-size:10.5px; padding:2px 8px; border-radius:20px;
+  white-space:nowrap; border:.5px solid var(--line); color:var(--muted); }
+.due.over { color:#d03b3b; border-color:#d03b3b; font-weight:600; }
+.due.today { color:#c98500; border-color:#c98500; font-weight:600; }
+.stepper { display:flex; flex-wrap:wrap; gap:0; margin:.4rem 0 .2rem; }
+.stepper button { font:inherit; font-size:12.5px; padding:7px 14px; cursor:pointer;
+  border:.5px solid var(--line); background:var(--surface); color:var(--muted);
+  margin-left:-.5px; }
+.stepper button:first-child { border-radius:8px 0 0 8px; margin-left:0; }
+.stepper button:last-child { border-radius:0 8px 8px 0; }
+.stepper button.done { color:var(--ink); background:var(--raise); }
+.stepper button[aria-current="true"] { background:var(--accent); color:var(--on-accent);
+  border-color:var(--accent); font-weight:600; }
+.stepper button.lost[aria-current="true"] { background:#898781; border-color:#898781;
+  color:#fff; }
+.stepper button:hover { border-color:var(--accent); position:relative; }
+.stepper button:focus-visible { outline:2px solid var(--accent); outline-offset:1px;
+  position:relative; }
+.lpgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:6px 24px; }
+.lbox { border:.5px solid var(--line); border-radius:10px; padding:.7rem .9rem;
+  margin:.6rem 0; }
+.lbox .dh { margin-top:0; }
+input[type="date"].act { cursor:text; }
 @media (prefers-reduced-motion: reduce) { .chev { transition:none; } }
 </style>
 
@@ -1243,7 +1318,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       <button data-tab="contacts">Contacts</button>
       <span class="ng">ACQUIRE</span>
       <button data-tab="leads">Leads</button>
-      <button data-tab="leadrecs">Lead recommendations</button>
+      <button data-tab="leadrecs">Follow-ups<span class="navn" id="fu-count"></span></button>
       <span class="ng">GROW</span>
       <button data-tab="actions">This week</button>
       <button data-tab="protect">Protect</button>
@@ -1416,44 +1491,64 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 
     <div class="section" id="sec-leadrecs">
       <div class="play">
-        <div class="tag">ACQUIRE &#183; RECOMMENDATIONS</div>
-        <h2>Lead recommendations</h2>
-        <p class="lede">What to do next with the pipeline, in priority order:
-          confirm leads that already look like customers, link acquired leads,
-          contact the highest-rated new leads, chase the stale ones.</p>
+        <div class="tag">ACQUIRE &#183; FOLLOW-UPS</div>
+        <h2>Follow-ups</h2>
+        <p class="lede">Every open lead has a next follow-up: a date someone
+          set, or the stage's rule (new leads within a day, contacted leads
+          chased after 4 days, qualified leads kept warm weekly, samples
+          checked 3 days after the box). Log what you did on the lead's page
+          and its next date moves on.</p>
+        <div class="dirbar">
+          <label class="said whoami">You are
+            <select class="act" data-whoami aria-label="Who are you"></select></label>
+          <label class="said" style="display:flex;align-items:center;gap:6px;">
+            <input type="checkbox" id="fumine"> only leads I own or nobody owns
+          </label>
+        </div>
         <div id="lrlist"></div>
       </div>
     </div>
 
     <div class="section" id="sec-leads">
       <div class="play">
-        <div class="tag">LEADS</div>
+        <div class="tag">ACQUIRE &#183; LEADS</div>
         <h2>Lead pipeline</h2>
         <p class="lede">Website enquiries arrive here straight from the forms,
           researched and rated by AI the moment they come in (the sales team
-          gets the same write-up by email). Set each lead's Status below.
-          Acquired leads link to their Fresho account — automatically when the
-          name matches, by hand below when it doesn't — and pull ongoing orders
-          and &#163; sales from Fresho.</p>
+          gets the same write-up by email). Open a lead to move it through the
+          funnel, log calls and notes, and set the next follow-up. Won leads
+          link to their Fresho account and pull orders and &#163; sales.</p>
         <div class="kpis" id="lead-kpis"></div>
-        <div class="scroll" id="lead-ratings"></div>
-        <div class="dirbar">
-          <select class="act" id="leadstatus" aria-label="Filter by lead status">
-            <option value="">All statuses</option>
-            <option value="New">New</option>
-            <option value="Contacted">Contacted</option>
-            <option value="Acquired">Acquired</option>
-            <option value="Discarded">Discarded</option>
+        <div class="dh">FUNNEL &#8212; HOW FAR LEADS GET (commercial leads, excluding test/personal)</div>
+        <div id="lead-funnel"></div>
+        <div class="dirbar" style="margin-top:1rem">
+          <input class="act noteinput" id="leadq" type="search"
+            placeholder="Search business, contact, email…" aria-label="Search leads">
+          <select class="act" id="leadstatus" aria-label="Filter by stage"></select>
+          <select class="act" id="leadowner" aria-label="Filter by owner"></select>
+          <select class="act" id="leadrating" aria-label="Filter by rating">
+            <option value="0">Any rating</option>
+            <option value="4">&#9733;4 and up</option>
+            <option value="3">&#9733;3 and up</option>
           </select>
           <label class="said" style="display:flex;align-items:center;gap:6px;">
             <input type="checkbox" id="leadexcl"> show excluded (test/personal)
           </label>
+          <label class="said whoami">You are
+            <select class="act" data-whoami aria-label="Who are you"></select></label>
         </div>
         <div class="list" id="leadlist"></div>
-        <p class="note">Leads still New or Contacted after 21 days are flagged
-          stale. Excluded rows (test entries, personal sample-box asks,
-          internal addresses) stay out of the numbers above.</p>
+        <details class="help" style="margin-top:1rem">
+          <summary>Conversion by AI rating</summary>
+          <div class="scroll" id="lead-ratings"></div>
+        </details>
+        <p class="note">Excluded rows (test entries, personal sample-box asks,
+          internal addresses) stay out of every number above.</p>
       </div>
+    </div>
+
+    <div class="section" id="sec-lead">
+      <div class="play" id="lead-page"></div>
     </div>
 
     <div class="section" id="sec-manage">
@@ -1490,7 +1585,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   if(!STATE.log) STATE.log = [];
   if(!STATE.contacts) STATE.contacts = [];
   if(!STATE.leadMatch) STATE.leadMatch = {};
-  if(!STATE.leadStatus) STATE.leadStatus = {};
+  if(!STATE.leadLog) STATE.leadLog = [];
   var openCards = {};
   var esc = function(s){ return String(s==null?'':s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1549,11 +1644,16 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   var TABS = ['actions','protect','recover','grow','manage','accounts',
               'leads','contacts','leadrecs','sales','help'];
   var curAcct = null;
+  function hidePages(){
+    ['sec-account', 'sec-lead'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.classList.remove('on');
+    });
+  }
   function showTab(name){
     if(TABS.indexOf(name) < 0) name = 'actions';
-    curAcct = null;
-    var ap = document.getElementById('sec-account');
-    if(ap) ap.classList.remove('on');
+    curAcct = null; curLead = null;
+    hidePages();
     TABS.forEach(function(t){
       var s = document.getElementById('sec-' + t);
       if(s) s.classList.toggle('on', t === name);
@@ -1572,7 +1672,8 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   }
   function showAccount(code){
     if(!dirRow(code)){ showTab('accounts'); return; }
-    curAcct = code;
+    curAcct = code; curLead = null;
+    hidePages();
     TABS.forEach(function(t){
       var s = document.getElementById('sec-' + t);
       if(s) s.classList.remove('on');
@@ -1586,10 +1687,31 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     renderAccount(code);
     window.scrollTo(0, 0);
   }
+  function showLead(sid){
+    if(!leadBySid(sid)){ showTab('leads'); return; }
+    curAcct = null; curLead = sid; openLostFor = null;
+    hidePages();
+    TABS.forEach(function(t){
+      var s = document.getElementById('sec-' + t);
+      if(s) s.classList.remove('on');
+    });
+    var lp = document.getElementById('sec-lead');
+    if(lp) lp.classList.add('on');
+    document.querySelectorAll('.nav button').forEach(function(b){
+      b.setAttribute('aria-current',
+        b.getAttribute('data-tab') === 'leads' ? 'true' : 'false');
+    });
+    renderLeadPage(sid);
+    window.scrollTo(0, 0);
+  }
   function route(){
     var h = location.hash.slice(1);
     if(h.indexOf('acct/') === 0){
       showAccount(decodeURIComponent(h.slice(5)));
+      return;
+    }
+    if(h.indexOf('lead/') === 0){
+      showLead(decodeURIComponent(h.slice(5)));
       return;
     }
     showTab(h || 'actions');
@@ -1908,6 +2030,10 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + '<span class="chip">' + esc(String(d.s).replace(/_/g, ' ')) + '</span>'
       + (d.grp ? '<span class="chip">' + esc(d.grp) + '</span>' : '')
       + (d.stage ? '<span class="chip">' + esc(d.stage) + '</span>' : '')
+      + (DATA.leads || []).filter(function(l){ return effMatch(l) === code; })
+          .map(function(l){ return '<button class="chip bk" data-golead="'
+            + esc(l.sid) + '">from lead ' + esc(fmtDay(dayOf(l.recv || l.date)))
+            + '</button>'; }).join('')
       + '</div>';
     h += '<div class="agridfacts">'
       + fact('REP', d.r)
@@ -2227,10 +2353,69 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(s){ s.textContent = msg; setTimeout(function(){ s.textContent = ''; }, 3200); }
   }
 
-  var openLead = null;
+  // ---------------------------------------------------------------- leads
+  // A lead's stage, owner and follow-up come from the data (as of the weekly
+  // rebuild) with this page's not-yet-filed events (STATE.leadLog) on top.
   var nameToCode = {};
   (DATA.directory || []).forEach(function(d){ nameToCode[d.n.toLowerCase()] = d.c; });
+  var STAGES = DATA.leadStages || [];
+  var STAGE_LBL = {};
+  STAGES.forEach(function(s){ STAGE_LBL[s[0]] = s[1]; });
+  var OPEN = ['New', 'Contacted', 'Qualified', 'Trial'];
+  var FUNNEL = ['New', 'Contacted', 'Qualified', 'Trial', 'Acquired'];
+  var CONTACT_KINDS = {call:'Called', email:'Emailed', whatsapp:'WhatsApp',
+    visit:'Visited', sample:'Sample sent'};
+  var LKIND = {stage:'Stage', note:'Note', follow_up:'Follow-up', owner:'Owner',
+    call:'Called', email:'Emailed', whatsapp:'WhatsApp', visit:'Visited',
+    sample:'Sample sent', received:'Enquiry'};
+  var VERB = {New:'Respond', Contacted:'Chase', Qualified:'Keep warm',
+    Trial:'Get feedback'};
+  var curLead = null;
+  var openLostFor = null;
 
+  // "You are" — who gets the credit for a logged action, until logins.
+  var meMem = '';
+  function whoAmI(){
+    if(meMem) return meMem;
+    try { meMem = localStorage.getItem('rushtons.me') || ''; } catch(err){}
+    return meMem;
+  }
+  function setMe(v){
+    meMem = v;
+    try { localStorage.setItem('rushtons.me', v); } catch(err){}
+  }
+  function whoamiOptions(){
+    var me = whoAmI();
+    return '<option value="">Choose…</option>' + (DATA.leadTeam || []).map(function(n){
+      return '<option' + (me === n ? ' selected' : '') + '>' + esc(n) + '</option>';
+    }).join('');
+  }
+  function fillWhoami(){
+    document.querySelectorAll('[data-whoami]').forEach(function(s){
+      s.innerHTML = whoamiOptions(); });
+  }
+
+  function isoDay(d){
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function todayIso(){ return isoDay(new Date()); }
+  function noon(iso){ return new Date(iso.slice(0, 10) + 'T12:00:00'); }
+  function addDays(iso, n){
+    var d = noon(iso); d.setDate(d.getDate() + n); return isoDay(d);
+  }
+  function dayDiff(a, b){ return Math.round((noon(b) - noon(a)) / 864e5); }
+  function dayOf(x){ return !x ? '' : (x.length > 10 ? isoDay(new Date(x)) : x); }
+  function fmtDay(iso){
+    if(!iso) return '';
+    return noon(iso).toLocaleDateString('en-GB',
+      {weekday:'short', day:'numeric', month:'short'});
+  }
+
+  function leadBySid(sid){
+    var r = (DATA.leads || []).filter(function(l){ return l.sid === sid; });
+    return r.length ? r[0] : null;
+  }
   function effMatch(l){
     return Object.prototype.hasOwnProperty.call(STATE.leadMatch, l.sid)
       ? (STATE.leadMatch[l.sid] || '') : (l.matched || '');
@@ -2240,54 +2425,175 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(Object.prototype.hasOwnProperty.call(STATE.leadMatch, l.sid)) return null;
     return l.sug || null;   // [code, score, how] — user dismissed = key present
   }
-  // Status set on this page wins until the weekly run folds it into the data
-  function effStatus(l){
-    return STATE.leadStatus[l.sid] || l.status || '';
+  function leadActs(l){
+    var a = (l.acts || []).map(function(x){
+      return {at:x[0], kind:x[1], stage:x[2], note:x[3], due:x[4], actor:x[5]}; });
+    STATE.leadLog.forEach(function(e){
+      if(e.sid !== l.sid) return;
+      a.push({at:e.at, kind:e.kind, stage:e.stage || '', due:e.due || '',
+        actor:e.actor || '', p:1,
+        note: e.kind === 'stage' ? (e.reason || '')
+          : (e.kind === 'owner' ? (e.owner || '') : (e.note || ''))});
+    });
+    a.sort(function(x, y){ return x.at < y.at ? -1 : (x.at > y.at ? 1 : 0); });
+    return a;
   }
-  function leadIsStale(l){
-    var st = effStatus(l);
-    if(st !== 'New' && st !== 'Contacted') return false;
-    if(!l.date) return false;
-    var cut = new Date(DATA.asOf); cut.setDate(cut.getDate() - 21);
-    return new Date(l.date) < cut;
+  // Effective pipeline state of a lead, and when it is next due.
+  function leadView(l){
+    var v = {st: l.status || 'New', owner: l.owner || '', next: l.next || '',
+      lost: l.lost || '', touch: dayOf(l.chg || l.recv || l.date || ''),
+      acts: leadActs(l), reached: 0};
+    v.acts.forEach(function(e){
+      if(e.p){
+        if(e.kind === 'stage'){
+          v.st = e.stage; v.lost = e.stage === 'Discarded' ? e.note : '';
+          v.next = e.due || '';
+        } else if(e.kind === 'follow_up') v.next = e.due || '';
+        else if(e.kind === 'owner') v.owner = e.note || '';
+        else if(e.due) v.next = e.due;
+      }
+      if(e.kind !== 'owner' && e.kind !== 'follow_up'){
+        var d = dayOf(e.at);
+        if(d > v.touch) v.touch = d;
+      }
+      if(e.kind === 'stage' && FUNNEL.indexOf(e.stage) > v.reached)
+        v.reached = FUNNEL.indexOf(e.stage);
+      if(CONTACT_KINDS[e.kind] && v.reached < 1) v.reached = 1;
+    });
+    if(FUNNEL.indexOf(v.st) > v.reached) v.reached = FUNNEL.indexOf(v.st);
+    v.open = OPEN.indexOf(v.st) >= 0;
+    v.due = ''; v.auto = false; v.dueIn = null; v.quiet = false;
+    if(v.open){
+      if(v.next) v.due = v.next;
+      else if(v.touch){
+        v.due = addDays(v.touch, (DATA.leadFollowUp || {})[v.st] || 7);
+        v.auto = true;
+      }
+      var t = todayIso();
+      v.quiet = !v.next && !!v.touch
+        && dayDiff(v.touch, t) > (DATA.leadQuietDays || 60);
+      if(v.due) v.dueIn = dayDiff(t, v.due);
+    }
+    return v;
   }
+
   function leadChip(st){
-    var c = st === 'Acquired' ? '#007946' : st === 'Contacted' ? '#c98500'
-      : st === 'New' ? '#c98500' : '#898781';
+    var c = st === 'Acquired' ? '#007946' : st === 'Discarded' ? '#898781'
+      : '#c98500';
     return '<span class="pill" style="background:' + c + '1f;color:' + c + '">'
-      + esc(st || '—') + '</span>';
+      + esc(STAGE_LBL[st] || st || '—') + '</span>';
+  }
+  function dueBadge(v){
+    if(!v.open) return '';
+    if(v.quiet) return '<span class="due">quiet ' + dayDiff(v.touch, todayIso())
+      + 'd</span>';
+    if(v.dueIn === null) return '';
+    if(v.dueIn < 0) return '<span class="due over">overdue ' + (-v.dueIn) + 'd</span>';
+    if(v.dueIn === 0) return '<span class="due today">due today</span>';
+    return '<span class="due">due ' + esc(fmtDay(v.due)) + '</span>';
   }
   function stars(r){
     if(!r) return '<span class="muted">unrated</span>';
     return '<span class="stars">' + '★'.repeat(r) + '☆'.repeat(5 - r) + '</span>';
+  }
+  function lname(l){ return l.biz || l.name || l.email || '(no name)'; }
+  function plural(n, w){ return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function fval(id){ return (document.getElementById(id) || {}).value || ''; }
+
+  function initLeadFilters(){
+    var ls = document.getElementById('leadstatus');
+    if(ls) ls.innerHTML = '<option value="open">Open (not won or lost)</option>'
+      + '<option value="">All stages</option>'
+      + STAGES.map(function(s){
+          return '<option value="' + esc(s[0]) + '">' + esc(s[1]) + '</option>';
+        }).join('');
+    var lo = document.getElementById('leadowner');
+    if(lo) lo.innerHTML = '<option value="">Any owner</option>'
+      + '<option value="-">Nobody yet</option>'
+      + (DATA.leadTeam || []).map(function(n){
+          return '<option>' + esc(n) + '</option>'; }).join('');
+    fillWhoami();
   }
 
   function renderLeads(){
     var host = document.getElementById('leadlist');
     if(!host) return;
     var all = DATA.leads || [];
+    var views = {};
+    all.forEach(function(l){ views[l.sid] = leadView(l); });
     var included = all.filter(function(l){ return !l.excl; });
-    var acq = included.filter(function(l){ return effStatus(l) === 'Acquired'; });
-    var matched = included.filter(function(l){ return effMatch(l); });
-    var stale = included.filter(leadIsStale);
-    var sugs = included.filter(sugFor);
+
+    var open = 0, dueNow = 0, won = 0, resp = [];
+    included.forEach(function(l){
+      var v = views[l.sid];
+      if(v.open){
+        open++;
+        if(!v.quiet && v.dueIn !== null && v.dueIn <= 0) dueNow++;
+      }
+      if(v.st === 'Acquired') won++;
+      if(l.recv){
+        var first = null;
+        v.acts.forEach(function(e){
+          if(!first && (CONTACT_KINDS[e.kind]
+              || (e.kind === 'stage' && e.stage !== 'New'))) first = e.at;
+        });
+        if(first) resp.push((new Date(first) - new Date(l.recv)) / 36e5);
+      }
+    });
+    var matched = included.filter(function(l){ return effMatch(l); }).length;
+    var sugs = included.filter(sugFor).length;
+    resp.sort(function(a, b){ return a - b; });
+    var med = resp.length ? resp[Math.floor(resp.length / 2)] : null;
     var kp = document.getElementById('lead-kpis');
     if(kp) kp.innerHTML =
-      '<div class="kpi" style="cursor:default"><span class="n">' + included.length
-      + '</span><span class="l">commercial leads (' + (all.length - included.length)
-      + ' excluded)</span></div>'
-      + '<div class="kpi" style="cursor:default"><span class="n">' + acq.length
-      + '</span><span class="l">marked acquired</span></div>'
-      + '<div class="kpi" style="cursor:default"><span class="n">' + matched.length
-      + (sugs.length ? ' <span class="muted" style="font-size:15px">+'
-         + sugs.length + '?</span>' : '')
-      + '</span><span class="l">actual customers — '
-      + (included.length ? Math.round(100 * matched.length / included.length) : 0)
-      + '% real conversion' + (sugs.length ? ' · ' + sugs.length
-      + ' suggested match' + (sugs.length > 1 ? 'es' : '') + ' to confirm' : '')
-      + '</span></div>'
-      + '<div class="kpi" style="cursor:default"><span class="n">' + stale.length
-      + '</span><span class="l">stale — no movement in 21+ days</span></div>';
+      '<button class="kpi" data-funnel="open"><span class="n">' + open
+      + '</span><span class="l">open leads (of ' + included.length
+      + ' commercial)</span></button>'
+      + '<button class="kpi" data-tab="leadrecs"><span class="n">' + dueNow
+      + '</span><span class="l">follow-ups due now</span></button>'
+      + '<button class="kpi" data-funnel="Acquired"><span class="n">' + won
+      + '</span><span class="l">won · ' + matched + ' linked to a Fresho account ('
+      + (included.length ? Math.round(100 * matched / included.length) : 0)
+      + '% real conversion)' + (sugs ? ' · ' + sugs + ' possible match'
+      + (sugs > 1 ? 'es' : '') + ' to confirm' : '') + '</span></button>'
+      + '<div class="kpi" style="cursor:default"><span class="n">'
+      + (med === null ? '—' : (med < 48 ? Math.round(med) + 'h'
+         : Math.round(med / 24) + 'd'))
+      + '</span><span class="l">typical time to first contact (website leads'
+      + (resp.length ? ', ' + resp.length + ' so far' : ', none logged yet')
+      + ')</span></div>';
+
+    var fh = document.getElementById('lead-funnel');
+    if(fh){
+      var n = included.length || 1;
+      var h = '<div class="funnel">';
+      FUNNEL.forEach(function(st, i){
+        var reached = included.filter(function(l){
+          return views[l.sid].reached >= i; }).length;
+        var now = included.filter(function(l){
+          return views[l.sid].st === st; }).length;
+        h += '<button class="frow" data-funnel="' + esc(st) + '" title="'
+          + now + ' in this stage now">'
+          + '<span class="flab">' + esc(STAGE_LBL[st]) + '</span>'
+          + '<span class="ftrack"><span class="fbar" style="width:'
+          + (100 * reached / n).toFixed(1) + '%"></span></span>'
+          + '<span class="fnum"><b>' + reached + '</b> · '
+          + Math.round(100 * reached / n) + '%</span></button>';
+      });
+      var lost = included.filter(function(l){ return views[l.sid].st === 'Discarded'; });
+      var why = {};
+      lost.forEach(function(l){
+        var r = views[l.sid].lost || 'no reason recorded';
+        why[r] = (why[r] || 0) + 1; });
+      var whyTxt = Object.keys(why).sort(function(a, b){ return why[b] - why[a]; })
+        .map(function(k){ return esc(k) + ' ' + why[k]; }).join(' · ');
+      h += '</div><div class="flost"><button class="bk" data-funnel="Discarded">Lost: '
+        + lost.length + '</button>' + (whyTxt ? ' — ' + whyTxt : '')
+        + '. Bars count leads that got at least that far; tap a stage to list'
+        + ' the leads in it now.</div>';
+      fh.innerHTML = h;
+    }
+
     var rt = document.getElementById('lead-ratings');
     if(rt){
       var rows = '';
@@ -2295,98 +2601,250 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         var pool = included.filter(function(l){
           return band === null ? !l.rating : l.rating === band; });
         if(!pool.length) return;
-        var a = pool.filter(function(l){ return effStatus(l) === 'Acquired'; }).length;
+        var a = pool.filter(function(l){
+          return views[l.sid].st === 'Acquired'; }).length;
         rows += '<tr><td>' + (band === null ? 'Unrated'
           : '★'.repeat(band)) + '</td><td class="num">' + pool.length
           + '</td><td class="num">' + a + '</td><td class="num">'
           + Math.round(100 * a / pool.length) + '%</td></tr>';
       });
       rt.innerHTML = '<table><tr><th>Rating</th><th>Leads</th>'
-        + '<th>Acquired</th><th>Conversion</th></tr>' + rows + '</table>';
+        + '<th>Won</th><th>Conversion</th></tr>' + rows + '</table>';
     }
-    var sf = (document.getElementById('leadstatus') || {}).value || '';
+
+    var sf = fval('leadstatus'), of = fval('leadowner');
+    var rf = parseInt(fval('leadrating'), 10) || 0;
+    var q = fval('leadq').trim().toLowerCase();
     var showEx = !!(document.getElementById('leadexcl') || {}).checked;
     var list = all.filter(function(l){
-      return (showEx || !l.excl) && (!sf || effStatus(l) === sf);
+      var v = views[l.sid];
+      if(!showEx && l.excl) return false;
+      if(sf === 'open' && !v.open) return false;
+      if(sf && sf !== 'open' && v.st !== sf) return false;
+      if(of === '-' && v.owner) return false;
+      if(of && of !== '-' && v.owner !== of) return false;
+      if(rf && (l.rating || 0) < rf) return false;
+      if(q && [l.biz, l.name, l.email, l.phone].join(' ').toLowerCase()
+          .indexOf(q) < 0) return false;
+      return true;
+    });
+    if(sf === 'open') list.sort(function(a, b){
+      var x = views[a.sid], y = views[b.sid];
+      if(x.quiet !== y.quiet) return x.quiet ? 1 : -1;
+      return (x.dueIn === null ? 1e9 : x.dueIn) - (y.dueIn === null ? 1e9 : y.dueIn);
     });
     host.innerHTML = list.map(function(l){
-      var open = openLead === l.sid;
-      var m = effMatch(l);
-      var md = m ? dirRow(m) : null;
-      var head = '<button class="rowhead" data-leadtoggle="' + esc(l.sid)
-        + '" aria-expanded="' + (open ? 'true' : 'false')
-        + '"><span class="chev">▶</span>'
-        + '<span class="rname">' + esc(l.biz || l.name || l.email || '(no name)')
-        + '</span>' + stars(l.rating) + leadChip(effStatus(l))
-        + (leadIsStale(l) ? '<span class="stale">STALE</span>' : '')
+      var v = views[l.sid];
+      return '<div class="lrow' + (l.excl ? ' excl' : '') + '">'
+        + '<button class="lhead" data-golead="' + esc(l.sid) + '">'
+        + '<span class="rname">' + esc(lname(l)) + '</span>'
+        + stars(l.rating) + leadChip(v.st) + dueBadge(v)
+        + (v.owner ? '<span class="owner">' + esc(v.owner) + '</span>' : '')
         + (l.excl ? '<span class="pill">' + esc(l.excl) + '</span>' : '')
         + '<span class="dmeta">' + esc(l.src) + (l.date ? ' · ' + esc(l.date) : '')
-        + '</span></button>';
-      var body = '';
-      if(open){
-        body += '<div class="facts">'
-          + (l.name ? '<span>contact <b>' + esc(l.name) + '</b></span>' : '')
-          + (l.email ? '<span><a href="mailto:' + esc(l.email) + '">'
-             + esc(l.email) + '</a></span>' : '')
-          + (l.phone ? '<span>' + esc(l.phone) + '</span>' : '')
-          + (l.type ? '<span>' + esc(l.type) + '</span>' : '')
-          + (l.heard ? '<span>heard via <b>' + esc(l.heard) + '</b></span>' : '')
-          + '</div>'
-          + '<div class="acts"><label class="said">Status '
-          + '<select class="act" data-leadstatus="' + esc(l.sid) + '">'
-          + ['New', 'Contacted', 'Acquired', 'Discarded'].map(function(st){
-              return '<option' + (effStatus(l) === st ? ' selected' : '') + '>'
-                + st + '</option>'; }).join('')
-          + '</select></label>'
-          + '<span class="said" id="say-ls-' + esc(l.sid) + '"></span></div>';
-        if(l.analysis) body += '<div class="dh">AI ANALYSIS</div>'
-          + '<div class="draft">' + esc(l.analysis) + '</div>';
-        if(l.notes) body += '<div class="dh">NOTES</div><p class="said">'
-          + esc(l.notes) + '</p>';
-        if(l.details) body += '<p class="said">' + esc(l.details) + '</p>';
-        body += '<div class="dh">FRESHO ACCOUNT</div>';
-        if(md){
-          body += '<div class="facts"><span>linked to <button class="bk" '
-            + 'data-goacct="' + esc(md.c) + '">' + esc(md.n) + '</button>'
-            + (l.method && !STATE.leadMatch.hasOwnProperty(l.sid)
-               ? ' <span class="muted">(' + esc(l.method) + ')</span>' : '')
-            + '</span><span>orders since <b>' + ordersTotal(md.c)
-            + '</b></span><span>lines <b>' + md.l + '</b></span>'
-            + (valOf(md.c) ? '<span>sales <b>' + money(valOf(md.c).s) + '</b> '
-               + esc(periodLabel()) + '</span>' : '')
-            + (md.first ? '<span>first order <b>' + esc(md.first) + '</b></span>' : '')
-            + '</div><div class="acts"><button class="act mini" data-leadclear="'
-            + esc(l.sid) + '">Clear link</button>'
-            + '<span class="said" id="say-l-' + esc(l.sid) + '"></span></div>';
-        } else {
-          var sg = sugFor(l);
-          if(sg){
-            var sd = dirRow(sg[0]);
-            if(sd) body += '<div class="facts"><span>looks like existing '
-              + 'customer <button class="bk" data-goacct="' + esc(sd.c) + '">'
-              + esc(sd.n) + '</button> <span class="muted">('
-              + Math.round(sg[1] * 100) + '% ' + esc(sg[2]) + ' · account is '
-              + esc(String(sd.s).replace(/_/g, ' ')) + ')</span></span></div>'
-              + '<div class="acts"><button class="act" data-leadconfirm="'
-              + esc(l.sid) + '" data-code="' + esc(sd.c)
-              + '">Confirm — same business</button>'
-              + '<button class="act mini" data-leadclear="' + esc(l.sid)
-              + '">Not a match</button>'
-              + '<span class="said" id="say-l-' + esc(l.sid) + '"></span></div>';
-          }
-          body += '<div class="matchform">'
-            + '<input class="act" list="acctnames" id="lm-' + esc(l.sid)
-            + '" placeholder="Type the account name…">'
-            + '<button class="act" data-leadmatch="' + esc(l.sid)
-            + '">Link account</button>'
-            + (sg ? '' : '<span class="said" id="say-l-' + esc(l.sid)
-               + '"></span>') + '</div>';
-        }
-      }
-      return '<div class="lrow row' + (open ? ' open' : '')
-        + (l.excl ? ' excl' : '') + '">' + head
-        + '<div class="detail">' + body + '</div></div>';
+        + '</span></button></div>';
     }).join('') || '<p class="said">No leads match this filter.</p>';
+  }
+
+  function waNumber(p){
+    var d = String(p || '').replace(/\D/g, '');
+    if(!d) return '';
+    if(d.indexOf('44') === 0) return d;
+    if(d.charAt(0) === '0') return '44' + d.slice(1);
+    if(d.length === 10 && d.charAt(0) === '7') return '44' + d;
+    return d;
+  }
+
+  function actLine(e){
+    var what = LKIND[e.kind] || e.kind, detail = '';
+    if(e.kind === 'stage') detail = '→ ' + (STAGE_LBL[e.stage] || e.stage)
+      + (e.stage === 'Discarded' && e.note ? ' (' + e.note + ')' : '');
+    else if(e.kind === 'owner') detail = '→ ' + (e.note || 'nobody');
+    else if(e.kind === 'follow_up') detail = e.due ? 'set for ' + fmtDay(e.due)
+      : 'back to the stage rule';
+    else {
+      detail = e.note || '';
+      if(e.due) detail += (detail ? ' · ' : '') + 'follow up ' + fmtDay(e.due);
+    }
+    return '<div class="tlrow"><span class="tld">' + esc(dayOf(e.at))
+      + '</span><span class="tlk">' + esc(what) + '</span><span class="tls">'
+      + esc(detail) + (e.actor ? ' · ' + esc(e.actor) : '')
+      + (e.p ? ' <span class="pend">(saved for everyone; filed weekly)</span>' : '')
+      + '</span></div>';
+  }
+
+  function freshoBlock(l){
+    var m = effMatch(l), md = m ? dirRow(m) : null, h = '';
+    if(md){
+      return '<div class="facts"><span>linked to <button class="bk" '
+        + 'data-goacct="' + esc(md.c) + '">' + esc(md.n) + '</button>'
+        + (l.method && !STATE.leadMatch.hasOwnProperty(l.sid)
+           ? ' <span class="muted">(' + esc(l.method) + ')</span>' : '')
+        + '</span><span>orders since <b>' + ordersTotal(md.c)
+        + '</b></span><span>lines <b>' + md.l + '</b></span>'
+        + (valOf(md.c) ? '<span>sales <b>' + money(valOf(md.c).s) + '</b> '
+           + esc(periodLabel()) + '</span>' : '')
+        + (md.first ? '<span>first order <b>' + esc(md.first) + '</b></span>' : '')
+        + '</div><div class="acts"><button class="act mini" data-leadclear="'
+        + esc(l.sid) + '">Clear link</button>'
+        + '<span class="said" id="say-l-' + esc(l.sid) + '"></span></div>';
+    }
+    var sg = sugFor(l);
+    if(sg){
+      var sd = dirRow(sg[0]);
+      if(sd) h += '<div class="facts"><span>looks like existing '
+        + 'customer <button class="bk" data-goacct="' + esc(sd.c) + '">'
+        + esc(sd.n) + '</button> <span class="muted">('
+        + Math.round(sg[1] * 100) + '% ' + esc(sg[2]) + ' · account is '
+        + esc(String(sd.s).replace(/_/g, ' ')) + ')</span></span></div>'
+        + '<div class="acts"><button class="act" data-leadconfirm="'
+        + esc(l.sid) + '" data-code="' + esc(sd.c)
+        + '">Confirm — same business</button>'
+        + '<button class="act mini" data-leadclear="' + esc(l.sid)
+        + '">Not a match</button></div>';
+    }
+    return h + '<div class="matchform">'
+      + '<input class="act" list="acctnames" id="lm-' + esc(l.sid)
+      + '" placeholder="Type the Fresho account name…">'
+      + '<button class="act" data-leadmatch="' + esc(l.sid)
+      + '">Link account</button><span class="said" id="say-l-' + esc(l.sid)
+      + '"></span></div>';
+  }
+
+  function renderLeadPage(sid){
+    var host = document.getElementById('lead-page');
+    var l = leadBySid(sid);
+    if(!host || !l) return;
+    var v = leadView(l), e = esc(sid);
+    var h = '<button class="bk" data-tab="leads">&#8592; All leads</button>';
+    h += '<div class="ahead"><h2>' + esc(lname(l)) + '</h2>' + stars(l.rating)
+      + leadChip(v.st) + dueBadge(v)
+      + (l.excl ? '<span class="pill">' + esc(l.excl) + '</span>' : '') + '</div>';
+    h += '<div class="ar">'
+      + (l.type ? '<span class="chip">' + esc(l.type) + '</span>' : '')
+      + (l.src ? '<span class="chip">' + esc(l.src) + '</span>' : '')
+      + (l.heard ? '<span class="chip">heard via ' + esc(l.heard) + '</span>' : '')
+      + '<span class="chip">enquired ' + esc(fmtDay(dayOf(l.recv || l.date)))
+      + '</span></div>';
+
+    h += '<div class="dh">STAGE</div><div class="stepper" role="group" '
+      + 'aria-label="Lead stage">';
+    STAGES.forEach(function(s){
+      var i = FUNNEL.indexOf(s[0]);
+      var cls = s[0] === 'Discarded' ? 'lost'
+        : (i >= 0 && i < v.reached ? 'done' : '');
+      h += '<button class="' + cls + '" data-lstage="' + esc(s[0]) + '" data-sid="'
+        + e + '" aria-current="' + (v.st === s[0] ? 'true' : 'false') + '">'
+        + esc(s[1]) + '</button>';
+    });
+    h += '</div>';
+    if(v.st === 'Discarded') h += '<p class="said">Lost'
+      + (v.lost ? ' — ' + esc(v.lost) : '') + '</p>';
+    if(openLostFor === sid){
+      h += '<div class="acts"><select class="act" id="lr-' + e
+        + '" aria-label="Why was it lost">' + (DATA.leadLost || []).map(function(r){
+          return '<option>' + esc(r) + '</option>'; }).join('')
+        + '</select><button class="act" data-lostconfirm="' + e
+        + '">Mark lost</button><button class="act mini" data-lostcancel="' + e
+        + '">Cancel</button></div>';
+    }
+    if(v.st === 'Acquired' && !effMatch(l)) h += '<p class="said">Won — link the'
+      + ' Fresho account below so its orders and sales count for this lead.</p>';
+    h += '<div><span class="said" id="say-lp-' + e + '"></span></div>';
+
+    h += '<div class="lpgrid"><div class="lbox"><div class="dh">NEXT FOLLOW-UP</div>';
+    if(v.open){
+      h += '<div>' + (v.due ? '<b>' + esc(fmtDay(v.due)) + '</b> '
+          + (v.dueIn > 0 ? '<span class="said">in ' + plural(v.dueIn, 'day')
+             + '</span>' : dueBadge(v)) : '—') + '</div>'
+        + '<p class="said" style="margin:.2rem 0 0">' + (v.auto
+          ? 'Automatic — ' + plural((DATA.leadFollowUp || {})[v.st] || 7, 'day')
+            + ' after the last touch (' + esc(fmtDay(v.touch)) + ') while '
+            + esc((STAGE_LBL[v.st] || v.st).toLowerCase()) + '.'
+          : 'Set by hand.') + '</p>'
+        + '<div class="acts"><input class="act" type="date" data-lfudate="' + e
+        + '" value="' + esc(v.next) + '" aria-label="Follow-up date">'
+        + '<button class="act mini" data-lfu="1" data-sid="' + e + '">Tomorrow</button>'
+        + '<button class="act mini" data-lfu="3" data-sid="' + e + '">In 3 days</button>'
+        + '<button class="act mini" data-lfu="7" data-sid="' + e + '">Next week</button>'
+        + (v.next ? '<button class="act mini" data-lfu="clear" data-sid="' + e
+           + '">Use the rule</button>' : '') + '</div>';
+    } else {
+      h += '<p class="said">None — this lead is '
+        + esc((STAGE_LBL[v.st] || v.st).toLowerCase()) + '.</p>';
+    }
+    h += '</div><div class="lbox"><div class="dh">OWNER</div>'
+      + '<select class="act" data-lowner="' + e + '" aria-label="Lead owner">'
+      + '<option value="">Nobody yet</option>'
+      + (DATA.leadTeam || []).map(function(n){
+          return '<option' + (v.owner === n ? ' selected' : '') + '>' + esc(n)
+            + '</option>'; }).join('')
+      + '</select><div class="dh">YOU ARE</div>'
+      + '<select class="act" data-whoami aria-label="Who are you">'
+      + whoamiOptions() + '</select></div></div>';
+
+    h += '<div class="lbox"><div class="dh">LOG WHAT YOU DID</div>'
+      + '<input class="act noteinput" style="width:100%" id="ln-' + e
+      + '" maxlength="500" placeholder="What happened? (optional for calls and emails)">'
+      + '<div class="acts">'
+      + Object.keys(CONTACT_KINDS).map(function(k){
+          return '<button class="act" data-lact="' + k + '" data-sid="' + e + '">'
+            + esc(CONTACT_KINDS[k]) + '</button>'; }).join('')
+      + '<button class="act" data-lnote="' + e + '">Add note</button></div></div>';
+
+    var wa = waNumber(l.phone);
+    h += '<div class="dh">CONTACT</div><div class="facts">'
+      + (l.name ? '<span><b>' + esc(l.name) + '</b></span>' : '')
+      + (l.email ? '<span><a href="mailto:' + esc(l.email) + '?subject='
+         + encodeURIComponent('Your enquiry with Rushton’s') + '">'
+         + esc(l.email) + '</a></span>' : '')
+      + (l.phone ? '<span><a href="tel:' + esc(l.phone.replace(/[^\d+]/g, ''))
+         + '">' + esc(l.phone) + '</a></span>' : '')
+      + (wa ? '<span><a href="https://wa.me/' + wa
+         + '" target="_blank" rel="noopener">WhatsApp</a></span>' : '')
+      + '</div>';
+
+    var acts = v.acts.slice();
+    acts.push({at: l.recv || l.date, kind: 'received',
+      note: 'via ' + (l.src || 'unknown') + (l.web ? ' (website form)' : '')});
+    acts.sort(function(x, y){ return x.at < y.at ? 1 : (x.at > y.at ? -1 : 0); });
+    h += '<div class="dh">TIMELINE</div><div class="tl">'
+      + acts.map(actLine).join('') + '</div>';
+    if(!v.acts.length && l.status && l.status !== 'New' && !l.web)
+      h += '<p class="said">Stage ' + esc(STAGE_LBL[l.status] || l.status)
+        + ' came from the old leads sheet.</p>';
+
+    if(l.analysis) h += '<div class="dh">AI RESEARCH</div><div class="draft">'
+      + esc(l.analysis) + '</div>';
+    if(l.notes || l.details) h += '<div class="dh">NOTES FROM THE OLD SHEET</div>'
+      + '<p class="said">' + esc([l.notes, l.details].filter(Boolean).join(' — '))
+      + '</p>';
+    h += '<div class="dh">FRESHO ACCOUNT</div>' + freshoBlock(l);
+    host.innerHTML = h;
+  }
+
+  function logLead(sid, kind, extra){
+    var me = whoAmI();
+    if(!me){
+      if(curLead) renderLeadPage(curLead);
+      say(sid, 'Choose who you are (the "You are" box) first', 'lp');
+      var w = document.querySelector('#sec-lead [data-whoami]');
+      if(w) w.focus();
+      return false;
+    }
+    var ev = {id: 'll|' + Date.now().toString(36)
+        + Math.random().toString(36).slice(2, 7),
+      sid: sid, kind: kind, at: new Date().toISOString(), actor: me};
+    for(var k in extra) ev[k] = extra[k];
+    STATE.leadLog.push(ev);
+    rerenderLeads();
+    scheduleSave(sid, 'lp');
+    return true;
+  }
+  function rerenderLeads(){
+    if(curLead) renderLeadPage(curLead);
+    renderLeads();
+    renderLeadRecs();
   }
 
   function openRow(code){
@@ -2431,46 +2889,71 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + 'account page.</p>';
   }
 
+  // Follow-ups: every open lead's next date, grouped; plus links to check.
   function renderLeadRecs(){
     var host = document.getElementById('lrlist');
-    if(!host) return;
-    var recs = [];
+    var me = whoAmI();
+    var mine = !!(document.getElementById('fumine') || {}).checked;
+    var g = {over: [], today: [], soon: [], quiet: []}, checks = [], dueAll = 0;
     (DATA.leads || []).forEach(function(l){
       if(l.excl) return;
+      var v = leadView(l);
+      if(v.open && !v.quiet && v.dueIn !== null && v.dueIn <= 0) dueAll++;
       var sg = sugFor(l);
-      var m = effMatch(l);
       if(sg){
         var sd = dirRow(sg[0]);
-        if(sd) recs.push({p: 0, verb: 'Confirm', name: l.biz || l.name,
-          why: 'looks like existing customer ' + sd.n + ' ('
-            + Math.round(sg[1] * 100) + '% ' + sg[2] + ') — status is still '
-            + (effStatus(l) || 'blank'), sid: l.sid});
-      } else if(effStatus(l) === 'Acquired' && !m){
-        recs.push({p: 1, verb: 'Link', name: l.biz || l.name,
-          why: 'marked acquired but not linked to any Fresho account yet',
-          sid: l.sid});
-      } else if(effStatus(l) === 'New' && (l.rating || 0) >= 4){
-        recs.push({p: 2, verb: 'Contact', name: l.biz || l.name,
-          why: '★'.repeat(l.rating) + ' new lead from ' + (l.src || 'unknown')
-            + (l.date ? ', ' + l.date : ''), sid: l.sid});
-      } else if(leadIsStale(l)){
-        recs.push({p: 3, verb: 'Chase', name: l.biz || l.name,
-          why: effStatus(l) + ' since ' + (l.date || '?')
-            + ' with no movement', sid: l.sid});
+        if(sd) checks.push({l: l, v: v, verb: 'Confirm', why: 'looks like existing'
+          + ' customer ' + sd.n + ' (' + Math.round(sg[1] * 100) + '% ' + sg[2]
+          + ') — confirm it on the lead page'});
+      } else if(v.st === 'Acquired' && !effMatch(l)){
+        checks.push({l: l, v: v, verb: 'Link',
+          why: 'won but not linked to a Fresho account yet'});
       }
+      if(!v.open) return;
+      if(mine && v.owner && v.owner !== me) return;
+      var it = {l: l, v: v};
+      if(v.quiet) g.quiet.push(it);
+      else if(v.dueIn === null || v.dueIn > 7) return;
+      else if(v.dueIn < 0) g.over.push(it);
+      else if(v.dueIn === 0) g.today.push(it);
+      else g.soon.push(it);
     });
-    recs.sort(function(a, b){ return a.p - b.p; });
-    host.innerHTML = recs.slice(0, 25).map(function(r){
+    var badge = document.getElementById('fu-count');
+    if(badge) badge.textContent = dueAll ? String(dueAll) : '';
+    if(!host) return;
+    var byDue = function(a, b){
+      return (a.v.dueIn - b.v.dueIn) || ((b.l.rating || 0) - (a.l.rating || 0)); };
+    var card = function(it, verb, why){
+      var l = it.l, v = it.v;
       return '<div class="card"><div class="crow">'
-        + '<span class="cverb">' + esc(r.verb) + '</span>'
-        + '<button class="cname" data-goleadrec="' + esc(r.sid) + '">'
-        + esc(r.name || '(no name)') + '</button></div>'
-        + '<div class="cwhy">' + esc(r.why) + '</div></div>';
-    }).join('') || '<p class="said">Nothing waiting — the pipeline is tidy.</p>';
-    if(recs.length > 25){
-      host.innerHTML += '<p class="said">+ ' + (recs.length - 25)
-        + ' more in the Leads list.</p>';
-    }
+        + '<span class="cverb">' + esc(verb || VERB[v.st] || 'Follow up') + '</span>'
+        + '<button class="cname" data-golead="' + esc(l.sid) + '">'
+        + esc(lname(l)) + '</button>' + stars(l.rating) + dueBadge(v) + '</div>'
+        + '<div class="cwhy">' + esc(why || ((STAGE_LBL[v.st] || v.st)
+          + ', last touched ' + fmtDay(v.touch)
+          + (v.auto ? ' · ' + ((DATA.leadFollowUp || {})[v.st] || 7) + '-day rule'
+             : ' · date set by hand')
+          + ' · ' + (v.owner || 'nobody owns it yet')
+          + (l.src ? ' · ' + l.src : ''))) + '</div></div>';
+    };
+    var block = function(title, items){
+      if(!items.length) return '';
+      return '<h3>' + title + ' (' + items.length + ')</h3>'
+        + items.sort(byDue).map(function(it){ return card(it); }).join('');
+    };
+    var h = block('Overdue', g.over) + block('Due today', g.today)
+      + block('Next 7 days', g.soon);
+    if(!h) h = '<p class="said">Nothing due in the next week'
+      + (mine ? ' for you' : '') + '.</p>';
+    if(checks.length) h += '<h3>To check (' + checks.length + ')</h3>'
+      + checks.map(function(c){ return card(c, c.verb, c.why); }).join('');
+    if(g.quiet.length) h += '<details class="help"><summary>Gone quiet — open but'
+      + ' untouched for ' + (DATA.leadQuietDays || 60) + '+ days (' + g.quiet.length
+      + '): revive or mark Lost</summary>'
+      + g.quiet.sort(function(a, b){ return a.v.touch < b.v.touch ? 1 : -1; })
+        .map(function(it){ return card(it, 'Revive or close'); }).join('')
+      + '</details>';
+    host.innerHTML = h;
   }
 
   function rerenderAll(keepRowOpen){
@@ -2483,6 +2966,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     renderContacts();
     renderLeadRecs();
     if(curAcct) renderAccount(curAcct);
+    if(curLead) renderLeadPage(curLead);
     if(keepRowOpen) openRow(keepRowOpen);
   }
 
@@ -2610,11 +3094,71 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       location.hash = 'acct/' + encodeURIComponent(ga.getAttribute('data-goacct'));
       return;
     }
-    var lt = ev.target.closest && ev.target.closest('[data-leadtoggle]');
-    if(lt){
-      var lsid = lt.getAttribute('data-leadtoggle');
-      openLead = openLead === lsid ? null : lsid;
+    var gl = ev.target.closest && ev.target.closest('[data-golead]');
+    if(gl){
+      location.hash = 'lead/' + encodeURIComponent(gl.getAttribute('data-golead'));
+      return;
+    }
+    var fr = ev.target.closest && ev.target.closest('[data-funnel]');
+    if(fr){
+      var fsel = document.getElementById('leadstatus');
+      if(fsel) fsel.value = fr.getAttribute('data-funnel');
+      if(!document.getElementById('sec-leads').classList.contains('on'))
+        showTab('leads');
       renderLeads();
+      var ll = document.getElementById('leadlist');
+      if(ll) ll.scrollIntoView({block: 'start'});
+      return;
+    }
+    var lsg = ev.target.closest && ev.target.closest('[data-lstage]');
+    if(lsg){
+      var gsid = lsg.getAttribute('data-sid'), gst = lsg.getAttribute('data-lstage');
+      if(gst === leadView(leadBySid(gsid)).st) return;
+      if(gst === 'Discarded'){ openLostFor = gsid; renderLeadPage(gsid); return; }
+      openLostFor = null;
+      logLead(gsid, 'stage', {stage: gst});
+      return;
+    }
+    var lok = ev.target.closest && ev.target.closest('[data-lostconfirm]');
+    if(lok){
+      var osid = lok.getAttribute('data-lostconfirm');
+      var rsel = document.getElementById('lr-' + osid);
+      openLostFor = null;
+      logLead(osid, 'stage', {stage: 'Discarded', reason: rsel ? rsel.value : ''});
+      return;
+    }
+    var lcn = ev.target.closest && ev.target.closest('[data-lostcancel]');
+    if(lcn){
+      openLostFor = null;
+      renderLeadPage(lcn.getAttribute('data-lostcancel'));
+      return;
+    }
+    var lfu = ev.target.closest && ev.target.closest('[data-lfu]');
+    if(lfu){
+      var k = lfu.getAttribute('data-lfu');
+      logLead(lfu.getAttribute('data-sid'), 'follow_up',
+        {due: k === 'clear' ? '' : addDays(todayIso(), parseInt(k, 10))});
+      return;
+    }
+    var lac = ev.target.closest && ev.target.closest('[data-lact]');
+    if(lac){
+      var asid = lac.getAttribute('data-sid'), akind = lac.getAttribute('data-lact');
+      var ain = document.getElementById('ln-' + asid);
+      var before = leadView(leadBySid(asid)).st;
+      if(!logLead(asid, akind, {note: ain ? ain.value.trim() : ''})) return;
+      // doing something with a lead moves it along the funnel
+      if(akind === 'sample' && OPEN.indexOf(before) >= 0 && before !== 'Trial')
+        logLead(asid, 'stage', {stage: 'Trial'});
+      else if(before === 'New') logLead(asid, 'stage', {stage: 'Contacted'});
+      return;
+    }
+    var lnt = ev.target.closest && ev.target.closest('[data-lnote]');
+    if(lnt){
+      var nsid = lnt.getAttribute('data-lnote');
+      var nin = document.getElementById('ln-' + nsid);
+      var txt = nin ? nin.value.trim() : '';
+      if(!txt){ say(nsid, 'Type the note first', 'lp'); return; }
+      logLead(nsid, 'note', {note: txt});
       return;
     }
     var lm = ev.target.closest && ev.target.closest('[data-leadmatch]');
@@ -2626,7 +3170,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       var mcode = nameToCode[typed];
       if(!mcode){ say(msid, 'No account with that exact name — pick from the list', 'l'); return; }
       STATE.leadMatch[msid] = mcode;
-      renderLeads(); renderLeadRecs();
+      rerenderLeads();
       scheduleSave(msid, 'l');
       return;
     }
@@ -2634,23 +3178,15 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(lcf){
       STATE.leadMatch[lcf.getAttribute('data-leadconfirm')] =
         lcf.getAttribute('data-code');
-      renderLeads(); renderLeadRecs();
+      rerenderLeads();
       scheduleSave(lcf.getAttribute('data-leadconfirm'), 'l');
       return;
     }
     var lc = ev.target.closest && ev.target.closest('[data-leadclear]');
     if(lc){
       STATE.leadMatch[lc.getAttribute('data-leadclear')] = '';
-      renderLeads(); renderLeadRecs();
+      rerenderLeads();
       scheduleSave(lc.getAttribute('data-leadclear'), 'l');
-      return;
-    }
-    var glr = ev.target.closest && ev.target.closest('[data-goleadrec]');
-    if(glr){
-      openLead = glr.getAttribute('data-goleadrec');
-      showTab('leads');
-      renderLeads();
-      window.scrollTo(0, 0);
       return;
     }
     var head = ev.target.closest && ev.target.closest('.rowhead');
@@ -2663,13 +3199,13 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   document.addEventListener('change', function(ev){
     var sel = ev.target.closest && ev.target.closest('[data-assign]');
     if(sel) assign(sel.getAttribute('data-assign'), sel.value);
-    var lst = ev.target.closest && ev.target.closest('[data-leadstatus]');
-    if(lst){
-      var ssid = lst.getAttribute('data-leadstatus');
-      STATE.leadStatus[ssid] = lst.value;
-      renderLeads(); renderLeadRecs();
-      scheduleSave(ssid, 'ls');
-    }
+    var wh = ev.target.closest && ev.target.closest('[data-whoami]');
+    if(wh){ setMe(wh.value); fillWhoami(); renderLeadRecs(); return; }
+    var low = ev.target.closest && ev.target.closest('[data-lowner]');
+    if(low){ logLead(low.getAttribute('data-lowner'), 'owner', {owner: low.value}); }
+    var lfd = ev.target.closest && ev.target.closest('[data-lfudate]');
+    if(lfd && lfd.value){
+      logLead(lfd.getAttribute('data-lfudate'), 'follow_up', {due: lfd.value}); }
   });
 
   var dq = document.getElementById('dirq');
@@ -2678,10 +3214,15 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     var el = document.getElementById(id);
     if(el) el.addEventListener('change', function(){ renderDir(); });
   });
-  var ls = document.getElementById('leadstatus');
-  if(ls) ls.addEventListener('change', function(){ renderLeads(); });
-  var lx = document.getElementById('leadexcl');
-  if(lx) lx.addEventListener('change', function(){ renderLeads(); });
+  initLeadFilters();
+  ['leadstatus', 'leadowner', 'leadrating', 'leadexcl'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener('change', function(){ renderLeads(); });
+  });
+  var lq = document.getElementById('leadq');
+  if(lq) lq.addEventListener('input', function(){ renderLeads(); });
+  var fm = document.getElementById('fumine');
+  if(fm) fm.addEventListener('change', function(){ renderLeadRecs(); });
   var cq = document.getElementById('conq');
   if(cq) cq.addEventListener('input', function(){ renderContacts(); });
 
