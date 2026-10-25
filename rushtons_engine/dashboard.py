@@ -1242,6 +1242,41 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .excl { opacity:.55; }
 .matchform { display:flex; flex-wrap:wrap; gap:6px; margin-top:.5rem; }
 .matchform input { flex:1 1 220px; min-width:0; }
+/* Summary cards belong to the home page (This week) only. */
+body:not(.home) .topkpis { display:none; }
+/* Phones: a compact bar with a menu button; the section list opens as a
+   full-screen sheet. Desktop keeps the left rail (min-width:960px). */
+.mbar { display:flex; align-items:center; gap:10px; position:sticky;
+  top:env(safe-area-inset-top, 0px); z-index:6; background:var(--bg);
+  padding:.55rem 0; margin:0 0 .9rem; border-bottom:.5px solid var(--line); }
+.hamb { position:relative; display:inline-flex; align-items:center;
+  justify-content:center; width:44px; height:44px; flex:none; border-radius:10px;
+  border:.5px solid var(--line); background:var(--surface); color:var(--ink);
+  cursor:pointer; }
+.hamb:hover { border-color:var(--accent); }
+.hamb:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.hdot { position:absolute; top:8px; right:8px; width:8px; height:8px;
+  border-radius:50%; background:#d03b3b; }
+.mcur { font-weight:600; font-size:16px; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.navtop { display:none; }
+body.navopen { overflow:hidden; }
+@media (max-width: 959px) {
+  .nav { display:none; position:fixed; inset:0; z-index:50; margin:0;
+    flex-direction:column; gap:4px; overflow-y:auto; background:var(--bg);
+    padding:calc(env(safe-area-inset-top, 0px) + .8rem) 1.25rem
+            calc(env(safe-area-inset-bottom, 0px) + 1.5rem); }
+  .nav.open { display:flex; }
+  .navtop { display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:.3rem; }
+  .nav button { text-align:left; border-radius:10px; font-size:15px;
+    padding:11px 14px; }
+  .nav .navclose { width:44px; height:44px; padding:0; text-align:center;
+    font-size:24px; line-height:1; }
+  .ng { align-self:flex-start; margin:.8rem 0 .1rem; padding:0 2px; }
+  body:not(.home) .sub { display:none; }
+}
+@media (min-width: 960px) { .mbar { display:none; } }
 .navn { font-family:var(--mono); font-size:10.5px; margin-left:6px; padding:0 6px;
   border-radius:10px; background:#d03b3b; color:#fff; }
 .navn:empty { display:none; }
@@ -1298,7 +1333,7 @@ input[type="date"].act { cursor:text; }
   <p class="sub">Growing value from existing accounts &#183; orders to {{ASOF}} &#183;
      {{VALUE_NOTE}}</p>
 
-  <div class="kpis">
+  <div class="kpis topkpis">
     {{KPI_SALES}}
     <button class="kpi" data-tab="protect"><span class="n">{{N_DECLINE}}</span>
       <span class="l">active accounts in silent decline</span></button>
@@ -1311,7 +1346,21 @@ input[type="date"].act { cursor:text; }
   </div>
 
   <div class="layout">
-    <nav class="nav" aria-label="Sections">
+    <div class="mbar">
+      <button class="hamb" id="hamb" aria-expanded="false" aria-controls="sitenav"
+        aria-label="Open the menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" fill="none"></path></svg>
+        <span class="hdot" id="hdot" hidden></span>
+      </button>
+      <span class="mcur" id="mcur">This week</span>
+    </div>
+    <nav class="nav" id="sitenav" aria-label="Sections">
+      <div class="navtop">
+        <span class="mcur">Menu</span>
+        <button class="navclose" data-navclose aria-label="Close the menu">&#215;</button>
+      </div>
       <span class="ng">CUSTOMERS</span>
       <button data-tab="sales">Sales &amp; margin</button>
       <button data-tab="accounts">Accounts</button>
@@ -1644,6 +1693,32 @@ input[type="date"].act { cursor:text; }
   var TABS = ['actions','protect','recover','grow','manage','accounts',
               'leads','contacts','leadrecs','sales','help'];
   var curAcct = null;
+  var hamb = document.getElementById('hamb');
+  var sitenav = document.getElementById('sitenav');
+  function openNav(){
+    if(!sitenav) return;
+    sitenav.classList.add('open');
+    document.body.classList.add('navopen');
+    if(hamb) hamb.setAttribute('aria-expanded', 'true');
+    var cur = sitenav.querySelector('[aria-current="true"]')
+      || sitenav.querySelector('button[data-tab]');
+    if(cur) cur.focus();
+  }
+  function closeNav(){
+    if(!sitenav || !sitenav.classList.contains('open')) return;
+    sitenav.classList.remove('open');
+    document.body.classList.remove('navopen');
+    if(hamb) hamb.setAttribute('aria-expanded', 'false');
+  }
+  // Called whenever the visible page changes: which menu item is current,
+  // whether the home-only summary cards show, and the phone bar's label.
+  function navChanged(tab, home){
+    document.body.classList.toggle('home', !!home);
+    var b = document.querySelector('.nav button[data-tab="' + tab + '"]');
+    var lbl = document.getElementById('mcur');
+    if(lbl && b) lbl.textContent = b.firstChild.textContent;
+    closeNav();
+  }
   function hidePages(){
     ['sec-account', 'sec-lead'].forEach(function(id){
       var el = document.getElementById(id);
@@ -1662,6 +1737,7 @@ input[type="date"].act { cursor:text; }
       b.setAttribute('aria-current', b.getAttribute('data-tab') === name
         ? 'true' : 'false');
     });
+    navChanged(name, name === 'actions');
     if(location.hash !== '#' + name){
       try { history.replaceState(null, '', '#' + name); } catch(err){}
     }
@@ -1684,6 +1760,7 @@ input[type="date"].act { cursor:text; }
       b.setAttribute('aria-current',
         b.getAttribute('data-tab') === 'accounts' ? 'true' : 'false');
     });
+    navChanged('accounts', false);
     renderAccount(code);
     window.scrollTo(0, 0);
   }
@@ -1701,6 +1778,7 @@ input[type="date"].act { cursor:text; }
       b.setAttribute('aria-current',
         b.getAttribute('data-tab') === 'leads' ? 'true' : 'false');
     });
+    navChanged('leads', false);
     renderLeadPage(sid);
     window.scrollTo(0, 0);
   }
@@ -2920,6 +2998,8 @@ input[type="date"].act { cursor:text; }
     });
     var badge = document.getElementById('fu-count');
     if(badge) badge.textContent = dueAll ? String(dueAll) : '';
+    var hdot = document.getElementById('hdot');
+    if(hdot) hdot.hidden = !dueAll;
     if(!host) return;
     var byDue = function(a, b){
       return (a.v.dueIn - b.v.dueIn) || ((b.l.rating || 0) - (a.l.rating || 0)); };
@@ -3021,7 +3101,16 @@ input[type="date"].act { cursor:text; }
       .then(function(){ publishing = false; });
   }
 
+  if(hamb) hamb.addEventListener('click', openNav);
+  document.addEventListener('keydown', function(ev){
+    if(ev.key === 'Escape' && sitenav && sitenav.classList.contains('open')){
+      closeNav();
+      if(hamb) hamb.focus();
+    }
+  });
   document.addEventListener('click', function(ev){
+    var nc = ev.target.closest && ev.target.closest('[data-navclose]');
+    if(nc){ closeNav(); if(hamb) hamb.focus(); return; }
     var tb = ev.target.closest && ev.target.closest('[data-tab]');
     if(tb){ showTab(tb.getAttribute('data-tab')); return; }
     var ct = ev.target.closest && ev.target.closest('[data-cardtoggle]');
