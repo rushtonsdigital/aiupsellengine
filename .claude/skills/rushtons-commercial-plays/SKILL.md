@@ -365,7 +365,7 @@ biggest segment whitespace. Then let each chart carry its own play.
   Function `lead-intake` (`supabase/functions/lead-intake/index.ts`): it saves
   the lead (`intake='web'`, status New), then in the background researches it
   with Claude + web search (same write-up sections and 1-5 rating the n8n flow
-  produced), and emails the sales team (`LEAD_NOTIFY_TO`; test/internal leads
+  produced), and emails the sales team via Resend (`LEAD_NOTIFY_TO`; test/internal leads
   go to `LEAD_NOTIFY_INTERNAL_TO` only). `python leads.py retry` finishes any
   web lead whose write-up or email failed. Status is set on the dashboard
   (`state.leadStatus`) and manual account links in `state.leadMatch`, both

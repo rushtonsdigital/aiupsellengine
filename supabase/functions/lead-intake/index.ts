@@ -19,16 +19,15 @@
 // Env (Supabase > Edge Functions > Secrets). SUPABASE_URL and
 // SUPABASE_SERVICE_ROLE_KEY are provided by Supabase automatically.
 //   ANTHROPIC_API_KEY        no key = leads saved unrated (retry rates them)
-//   SMTP_USER, SMTP_PASS     mailbox the notification is sent from (Gmail:
-//                            an app password); unset = no email
-//   SMTP_HOST, SMTP_PORT     default smtp.gmail.com:465 (587 is blocked here)
+//   RESEND_API_KEY           Resend (resend.com) key; unset = no email
+//   LEAD_NOTIFY_FROM         e.g. Rushton's leads <leads@rushtonsgreengrocer.co.uk>
+//                            — its domain must be verified in Resend
 //   LEAD_NOTIFY_TO           comma-separated sales-team addresses
 //   LEAD_NOTIFY_INTERNAL_TO  where test/internal leads go instead
 //   DASHBOARD_URL            linked from the email
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import Anthropic from "npm:@anthropic-ai/sdk@0.110.0";
-import nodemailer from "npm:nodemailer@6.9.16";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -264,9 +263,10 @@ function recipients(lead: Lead): string[] {
 }
 
 async function notify(lead: Lead): Promise<boolean> {
-  const user = Deno.env.get("SMTP_USER"), pass = Deno.env.get("SMTP_PASS");
+  const key = Deno.env.get("RESEND_API_KEY");
+  const from = Deno.env.get("LEAD_NOTIFY_FROM");
   const to = recipients(lead);
-  if (!user || !pass || !to.length) {
+  if (!key || !from || !to.length) {
     console.warn("email not configured - notification skipped");
     return false;
   }
@@ -297,15 +297,17 @@ async function notify(lead: Lead): Promise<boolean> {
 <pre style="white-space:pre-wrap;font-family:inherit;background:#f6f6f4;padding:12px;border-radius:6px">${esc(analysis)}</pre>
 ${dash ? `<p><a href="${esc(dash)}">Open the commercial dashboard</a></p>` : ""}
 </div>`;
-  const port = Number(Deno.env.get("SMTP_PORT") || 465);
-  const transport = nodemailer.createTransport({
-    host: Deno.env.get("SMTP_HOST") || "smtp.gmail.com",
-    port, secure: port === 465, auth: { user, pass },
+  // Resend REST API (https://resend.com/docs/api-reference/emails/send-email)
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${key}`,
+               "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from, to, subject, text, html,
+      ...(lead.email ? { reply_to: lead.email } : {}),
+    }),
   });
-  await transport.sendMail({
-    from: `Rushton's leads <${user}>`, to: to.join(", "),
-    replyTo: lead.email || undefined, subject, text, html,
-  });
+  if (!resp.ok) throw new Error(`Resend ${resp.status}: ${await resp.text()}`);
   return true;
 }
 

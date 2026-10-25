@@ -201,7 +201,7 @@ layer** for BI reports and ad-hoc data questions:
   answer within ~5s or Elementor shows the visitor an error, so the slow work runs after the
   response. Redeploy by pasting the file into Supabase > Edge Functions > lead-intake > Code
   (JWT verification stays OFF — Elementor can't send a key). Config lives in Edge Function
-  Secrets (`ANTHROPIC_API_KEY`, `SMTP_USER`/`SMTP_PASS`, `LEAD_NOTIFY_TO`,
+  Secrets (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `LEAD_NOTIFY_FROM`, `LEAD_NOTIFY_TO`,
   `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). Status is edited on the dashboard and harvested
   weekly; `python leads.py retry` finishes leads whose AI/email step failed.
 - Performance note: the summary tables answer in ~100ms and the whole dashboard
