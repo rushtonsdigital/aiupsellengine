@@ -1,25 +1,32 @@
-"""Marketing leads: a weekly mirror of the Google Sheet the n8n flow feeds.
+"""Marketing leads: website enquiries, matched to Fresho accounts.
 
-Division of truth (Hannah's brief, 2026-08-06):
-- The SHEET stays the source of truth for lead fields — n8n writes it, the
-  team edits Status there (the only hand-touched field). We never write back.
-- THIS table adds what the sheet cannot: the link to the Fresho account once a
-  lead is Acquired, and the ongoing order value that flows from it. Value is
-  VOLUME (orders, order lines) — there is still no price data anywhere, so the
-  "£ value" in the brief needs a price feed before it can be pounds.
+Source of truth (from 2026-10-25): the website forms post straight to the
+lead-intake Supabase Edge Function (supabase/functions/lead-intake), which
+saves the lead, researches and rates it with Claude, and emails the sales
+team. n8n and the Google Sheet are retired. Status (New / Contacted /
+Acquired / Discarded) is set on the dashboard and harvested back here
+(apply_status_changes). Every submission also stays in WordPress
+(Elementor > Submissions) as the backstop.
 
-Everything is idempotent: reloading the sheet upserts by source_id (SessionID
-when present, else a hash of email+date) and PRESERVES existing match fields.
+The sheet loader below is kept only for the one-off import of the legacy
+sheet (Hannah's brief, 2026-08-06): it upserts by source_id (SessionID when
+present, else a hash of email+date), PRESERVES match fields, and never
+overwrites a Status changed on the dashboard since.
+
+THIS table adds what the forms cannot: the link to the Fresho account once a
+lead is Acquired, and the ongoing order value that flows from it.
 
 Cleanup rules (the brief's "test/personal rows skew reporting"):
   excluded_reason is set for test rows (the word 'test' in name/details/notes),
   internal addresses, and personal sample-box asks with no business name.
-  Excluded leads stay visible but drop out of the KPIs.
+  Excluded leads stay visible but drop out of the KPIs. The Edge Function
+  applies the same test/internal rules.
 
 Rating normalisation: 1-5 kept; 'Good' -> 4 (documented mapping); else null.
 
 CLI (venv python, from rushtons_engine/):
-  python leads.py sync <sheet.csv>    load + auto-match in one go
+  python leads.py sync <sheet.csv>    one-off legacy import + auto-match
+  python leads.py retry               re-run AI/email for web leads that missed it
 """
 
 import argparse
@@ -102,7 +109,8 @@ def load_csv(conn, path: Path) -> int:
     preserves match fields across reloads (the sheet knows nothing of them)."""
     existing = {r.source_id: r for r in conn.execute(sa.select(
         db.leads.c.source_id, db.leads.c.matched_customer_code,
-        db.leads.c.match_method, db.leads.c.match_score, db.leads.c.matched_at))}
+        db.leads.c.match_method, db.leads.c.match_score, db.leads.c.matched_at,
+        db.leads.c.status, db.leads.c.status_changed_at))}
 
     n, seen = 0, set()
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -127,7 +135,11 @@ def load_csv(conn, path: Path) -> int:
                 "analysis": row["analysis"] or None,
                 "notes": row["notes"] or None,
                 "submitted_at": _parse_date(row["date_raw"]),
-                "status": row["status"] or None,
+                # a Status set on the dashboard beats the (stale) sheet
+                "status": (prev.status if prev and prev.status_changed_at
+                           else row["status"] or None),
+                "status_changed_at": prev.status_changed_at if prev else None,
+                "intake": "sheet",
                 "rating_raw": row["rating_raw"] or None,
                 "rating": normalize_rating(row["rating_raw"]),
                 "type": row["type"] or None,
@@ -227,13 +239,54 @@ def apply_manual_matches(conn, mapping: dict) -> int:
     return n
 
 
+LEAD_STATUSES = ("New", "Contacted", "Acquired", "Discarded")
+
+
+def apply_status_changes(conn, mapping: dict) -> int:
+    """Dashboard Status changes: {source_id: status}. The dashboard is where
+    Status lives now the sheet is retired; unknown values are skipped."""
+    n = 0
+    for sid, status in mapping.items():
+        if status not in LEAD_STATUSES:
+            log.warning("lead %s: unknown status %r skipped", sid, status)
+            continue
+        res = conn.execute(db.leads.update()
+                           .where(db.leads.c.source_id == sid)
+                           .where(sa.or_(db.leads.c.status.is_(None),
+                                         db.leads.c.status != status))
+                           .values(status=status, status_changed_at=db.now_utc(),
+                                   updated_at=db.now_utc()))
+        n += res.rowcount
+    if n:
+        log.info("applied %d lead status change(s) from the dashboard", n)
+    return n
+
+
+INTAKE_URL = "https://bhlgphaokfbhcetzersv.supabase.co/functions/v1/lead-intake"
+
+
+def retry_pending() -> str:
+    """Ask the Edge Function to finish web leads whose AI research or email
+    didn't complete (it works through up to 3 per call, in the background)."""
+    import urllib.request
+    req = urllib.request.Request(
+        INTAKE_URL, data=b'{"action": "retry"}', method="POST",
+        headers={"content-type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read().decode()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Rushton's leads mirror")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("sync").add_argument("sheet", type=Path)
+    sub.add_parser("retry")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    if args.cmd == "retry":
+        print(retry_pending())
+        return
     engine = db.init_db()
     with engine.begin() as conn:
         load_csv(conn, args.sheet)

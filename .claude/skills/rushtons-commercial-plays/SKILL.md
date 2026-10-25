@@ -359,16 +359,20 @@ biggest segment whitespace. Then let each chart carry its own play.
   backfilled once from the June 2026 master for the 7 CRM columns only, never
   the live Fresho-owned fields), a JS-drawn 13-week sparkline, top categories,
   never-bought gaps, contacts, comms, timeline.
-- **Leads pipeline** (`leads.py` + `leads` table): weekly mirror of the
-  marketing Google Sheet (n8n feeds it; the SHEET stays source of truth — we
-  never write back; Status is edited there). `python leads.py sync <csv>`
-  loads idempotently (source_id = SessionID or email+date hash, match fields
-  preserved across reloads) and auto-links Acquired leads to Fresho accounts
-  (contact email/phone first, then name similarity ≥0.84). Manual links from
-  the page land in `state.leadMatch`, harvested by `interactions.py harvest`.
-  Rating normalised 1-5 ('Good'→4); test/personal/internal rows get
-  `excluded_reason` and drop out of KPIs. Hannah's brief (Gmail,
-  2026-08-06) is the spec; linked leads now show £ sales from the GP report.
-- Weekly procedure gains one step: re-download the sheet
-  (`https://docs.google.com/spreadsheets/d/1DmIupaaEzIQ8qQDadpwq1HJob0_X2fIwbq0PdXX5SDM/export?format=csv`)
-  and run `leads.py sync` before the dashboard rebuild.
+- **Leads pipeline** (`leads` table; since 2026-10-25 fed live — n8n and the
+  Google Sheet are retired). The three Elementor forms on the website (Contact
+  Us template #4619, Home page, Fresh Produce page) post to the Supabase Edge
+  Function `lead-intake` (`supabase/functions/lead-intake/index.ts`): it saves
+  the lead (`intake='web'`, status New), then in the background researches it
+  with Claude + web search (same write-up sections and 1-5 rating the n8n flow
+  produced), and emails the sales team (`LEAD_NOTIFY_TO`; test/internal leads
+  go to `LEAD_NOTIFY_INTERNAL_TO` only). `python leads.py retry` finishes any
+  web lead whose write-up or email failed. Status is set on the dashboard
+  (`state.leadStatus`) and manual account links in `state.leadMatch`, both
+  harvested by `interactions.py harvest`. Acquired leads auto-link to Fresho
+  accounts (contact email/phone first, then name similarity ≥0.84). Rating
+  normalised 1-5 ('Good'→4); test/personal/internal rows get `excluded_reason`
+  and drop out of KPIs. Hannah's brief (Gmail, 2026-08-06) is the spec; linked
+  leads show £ sales from the GP report. Every submission is also kept in
+  WordPress (Elementor > Submissions) as the backstop. `leads.py sync` (sheet
+  import) exists only for the one-off legacy import.

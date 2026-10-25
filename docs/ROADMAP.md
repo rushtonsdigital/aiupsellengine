@@ -1,6 +1,6 @@
 # Rushton's Commercial Dashboard & Upsell Engine — status and roadmap
 
-_Last updated 2026-10-24. Start here in a new session, then read `CLAUDE.md`._
+_Last updated 2026-10-25. Start here in a new session, then read `CLAUDE.md`._
 
 ## Where things stand
 
@@ -59,6 +59,10 @@ financial year runs Nov–Oct. Target: team using the dashboard by early Novembe
    they're going to go").
 7. **Leads connected properly** (Hannah's ask on 19 Oct) — £ of converted leads, an
    "Add prospect" form (needs #1), lead → customer conversion tracking.
+   *Done 25 Oct:* the website forms post straight into Supabase (`lead-intake` Edge
+   Function) — AI research + rating on arrival and a sales-team email; n8n and the sheet are
+   retired; Status is set on the dashboard. New leads still reach the dashboard only at the
+   weekly republish until #1 (live data) lands.
 8. **Seasonal list from the full produce list** — waiting on Harry/Laurence; then monthly from
    the market report PDF.
 

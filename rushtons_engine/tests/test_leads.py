@@ -90,3 +90,36 @@ def test_manual_match_and_clear(conn, tmp_path):
     assert leads.apply_manual_matches(conn, {"s|401": ""}) == 1
     assert _rows(conn)[0]["matched_customer_code"] is None
     assert leads.apply_manual_matches(conn, {"s|401": "NOPE"}) == 0
+
+
+def test_dashboard_status_changes_apply_and_survive_a_sheet_reload(conn, tmp_path):
+    f = _write(tmp_path,
+        '101,Ana,The Green Fork,ana@greenfork.co.uk,07700 1,Contact Page Form,'
+        ',,"May 8, 2026",New,4,Restaurant,\n')
+    leads.load_csv(conn, f)
+    assert leads.apply_status_changes(
+        conn, {"s|101": "Contacted", "s|999": "Acquired", "s|101x": "Bogus"}) == 1
+    row = _rows(conn)[0]
+    assert row["status"] == "Contacted"
+    assert row["status_changed_at"] is not None
+    assert row["intake"] == "sheet"
+    # same status again is a no-op
+    assert leads.apply_status_changes(conn, {"s|101": "Contacted"}) == 0
+    # the legacy sheet (still saying New) must not undo the dashboard's change
+    leads.load_csv(conn, f)
+    assert _rows(conn)[0]["status"] == "Contacted"
+
+
+def test_migrate_adds_intake_columns_to_an_old_leads_table(tmp_path):
+    eng = sa.create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with eng.begin() as c:
+        c.execute(sa.text("create table leads (id integer primary key, "
+                          "source_id text unique not null, status text)"))
+        c.execute(sa.text("insert into leads (source_id, status) "
+                          "values ('s|1', 'New')"))
+    db._migrate_leads(eng)
+    cols = {c["name"] for c in sa.inspect(eng).get_columns("leads")}
+    assert set(db._LEAD_INTAKE_COLS) <= cols
+    with eng.connect() as c:
+        assert c.execute(sa.text("select intake from leads")).scalar() == "sheet"
+    db._migrate_leads(eng)          # idempotent
