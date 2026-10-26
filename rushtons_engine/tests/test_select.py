@@ -298,6 +298,7 @@ def test_client_exclusion_rules_2026_10(conn):
     accounts never become candidates; a held group is skipped until its date."""
     _seed_catalogue(conn)
     specs = {"OKAY": {}, "MARKET": {"sales_rep": "Market Customer (Rushtons)"},
+             "WILL": {"sales_rep": "William Thorogood (Rushtons)"},
              "URBAN": {"group_affiliation": "Urban Pubs & Bars"},
              "PUBHOUSE": {"group_affiliation": "public house group"},
              "FCCSITE": {"customer_name": "FCC Rinds & Vines"},

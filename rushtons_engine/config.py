@@ -152,7 +152,9 @@ EXCLUDED_ACCOUNT_STAGES = {"market customer"}
 # All compared case-insensitively; classify.py forces prestige='Excluded'.
 # Account manager (Fresho sales_rep). 'Market Customer' is Will's book of trade
 # accounts - Hannah: "All FCC, Market, and SMOKE should be under Will".
-EXCLUDED_SALES_REPS = {"market customer (rushtons)"}
+# 2026-10-26: the fresh Fresho master now tags Will directly ("William Thorogood
+# (Rushtons)", 71 accounts) - Hannah 2026-10-09: "remove all of Wills accounts".
+EXCLUDED_SALES_REPS = {"market customer (rushtons)", "william thorogood (rushtons)"}
 # Fresho group affiliation. Urban Pubs & Bars: centrally managed set menus, no
 # site-level upsell (Hannah 2026-09-28, Harry 2026-10-09). Public House Group
 # incl. Canteen: "don't want to touch right now" (Hannah 2026-10-09).
