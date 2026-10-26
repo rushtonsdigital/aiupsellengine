@@ -206,7 +206,11 @@ HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)"}
 # Venue types parked for sample boxes. Event caterers order to their client's
 # brief, so a sample box rarely lands — "let's park that segment for now and
 # revisit" (Hannah, re Zara Goalen). Also covers Schmaltz Production.
-PARKED_VENUE_TYPES = {"Event catering"}
+# 2026-10-26: widened to corporate/contract caterers too (staff restaurants,
+# office pantries - Travers Smith, JP Morgan, Sarasin, TPG...). Hannah 19 Oct:
+# "a lot of the Caterers are going through projects so we can't really have
+# much input on what they are buying"; Jose confirmed "all caterers".
+PARKED_VENUE_TYPES = {"Event catering", "Corporate Catering"}
 # Brand-new accounts aren't upsold yet ("Brand new account, no need to upsell
 # yet" - Laurence, Around the Cluck & Kossoffs). Raised from 6 weeks to three
 # months at the 2026-10-19 Hannah catch-up ("so that they can stabilize";
