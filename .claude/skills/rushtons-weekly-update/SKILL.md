@@ -115,6 +115,52 @@ Check the log: lines ingested, GP months loaded, "selected 15 of N", brief + tra
 **Never clear the recommendations table** (the 8-week cooldown depends on it). The selection
 is final — don't re-rank, add or drop accounts.
 
+## 3b. Human reviewer pass — challenge the list BEFORE writing anything
+
+The selector is an algorithm; Hannah and Laurence read the list as people who know these
+customers. Before step 4, read the 15 as Laurence would on Monday morning and ask, for each
+account and for the list as a whole, **"would I actually send this?"** Use the brief, the
+web search, the account's last 3 months of orders and the dashboard/ledger. This pass exists
+because the 2026-10-26 list went out with a priests' community house typed as a restaurant,
+three accounts with nothing left to pitch but prepped lines, and — after the first fix — seven
+of fifteen slots for two groups on one rep's desk. Jose: "it should have been picked up by
+us in the first place."
+
+Challenge, in this order:
+
+1. **Is it a real kitchen we should pitch?** Mis-typed venues (house kitchens, offices,
+   producers, resellers, event-only pop-ups), closed / refurbishing / temporary, brand-new
+   management, trade counterparties. → permanent exclusion (`EXCLUDED_CUSTOMER_CODES` with a
+   dated comment) or a hold (`HOLD_CUSTOMER_CODES`).
+2. **Is there anything genuinely worth pitching?** If the pool is only prepped lines, or the
+   only fitting items are things they already buy in another form, the slot is wasted.
+   (`MIN_REAL_GAP_CATEGORIES` catches the prep-only case; judge the rest.)
+3. **Concentration.** Count slots per group, per rep and per venue type. More than two from
+   one group (`MAX_ACCOUNTS_PER_GROUP`), or one rep holding a third of the list, reads as
+   lazy to the team. Sister venues of something pitched in the last 4 weeks (same hotel, same
+   group, same site) count too — check the ledger.
+4. **Timing and relationship.** Recently contacted (ledger notes, last 4 runs), declined or
+   "passing for this week", on the silent-decline / win-back boards (a box may be a retention
+   touch, not an upsell — say so for the rep), account manager says "not ours to pitch".
+5. **Would the team be embarrassed?** Read each pick list and message as the chef receiving
+   it: wrong season, wrong cuisine, obvious commodity, a dish idea that doesn't fit the menu.
+
+**Act on what you find — don't just note it:**
+- **Structural** (would recur next week): fix the rule in `rushtons_engine/config.py` /
+  `selector.py` with a dated comment and a test in `tests/test_select.py`, run the suite,
+  delete this run's unsent recommendations + comms for the accounts that change, and re-run
+  `run_weekly.py --skip-ingest --run-date <Monday>`. Dry-run first inside a rolled-back
+  transaction to see the new list. Then repeat this pass on the new arrivals — a fix can
+  create a new problem (the group cap was found reviewing the prep-only fix's replacements;
+  Fresho's `*` group placeholder was found reviewing the cap).
+- **One-off**: hold the code, or keep it with a clear `data_notes` line for the rep.
+- **Judgement calls only Jose/the client can make**: keep the account, flag it in the email
+  and the report.
+
+Record in the report what the pass changed and why. In the team email, mention only changes
+the team asked for or would care about (e.g. an account they'd want to know was dropped) —
+not internal quality fixes the team expected us to get right first time.
+
 ## 4. Pick products and write messages (steps 3–4)
 
 Load **`rushtons-product-selection`** then **`rushtons-comms`** (each with its feedback-log —
@@ -132,6 +178,11 @@ the scratchpad to read it; pools are large).
 rushtons_engine\.venv\Scripts\python.exe rushtons_engine\run_weekly.py --drafts rushtons_engine\output\drafts_<Monday>.json --run-date <Monday>
 ```
 It hard-fails on any code outside a pool — fix the drafts, never the pool.
+
+**Final read-through before applying (human reviewer, second pass):** read all 15 Option B
+messages top to bottom as the chef would. Same produce in every message? Something they
+already buy? A dish idea for a non-restaurant? A box offer to a no-box / parked account? Fix
+the drafts and re-apply.
 
 ## 5. Dashboard: outreach drafts + state-preserving republish
 

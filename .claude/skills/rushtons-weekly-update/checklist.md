@@ -9,7 +9,8 @@ Run date (Monday): ____________  Last order date loaded (o): ____________
 - [ ] 2c. (monthly / when asked) Fresho customer master
 - [ ] Downloads verified: dates after o, all invoiced, GP file > 125 bytes
 - [ ] 3. `run_weekly.py --data-dir <run folder> --run-date <Monday>` → 15 selected
-- [ ] 4. 15 venues web-searched · picks + A/B messages · `drafts_<Monday>.json` applied cleanly
+- [ ] 3b. Human reviewer pass: real kitchen? anything worth pitching? group/rep concentration (≤2 per group)? timing/relationship? embarrassing picks? → structural fixes to config + test + re-run; one-offs held; judgement calls flagged
+- [ ] 4. 15 venues web-searched · picks + A/B messages · `drafts_<Monday>.json` applied cleanly · final read-through of all Option B messages as the chef
 - [ ] 5. Outreach drafts rewritten for board accounts · live state harvested · dashboard rebuilt with state · published (capability artifact)
 - [ ] 6. Tracker sent to Jose · Gmail draft to Hannah/Laurence (cc Harry) · memory updated · changes committed + merged
 - [ ] 7. Report: data, the 15, rule changes, published, waiting on whom

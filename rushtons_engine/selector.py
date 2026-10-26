@@ -320,6 +320,9 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         gaps, ordered_gaps = detect_gaps(cats.get(code, set()), c.venue_type)
         if not ordered_gaps:
             continue  # buys across every targetable category — nothing to pitch
+        real_gaps = [g for g in gaps if g not in config.PREP_ONLY_GAP_CATEGORIES]
+        if len(real_gaps) < config.MIN_REAL_GAP_CATEGORIES:
+            continue  # only prepped lines left to pitch - not worth a slot
         orders_per_week = s["num_orders"] / span_weeks
         avg_lines = s["num_lines"] / s["num_orders"]
         score = score_candidate(orders_per_week, len(gaps), c.venue_type, avg_lines)
@@ -342,7 +345,18 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         # Total order: score desc -> order lines desc -> customer_code asc.
         candidates.sort(key=lambda x: (-x["score"], -x["total_qty_rank"],
                                        x["customer_code"]))
-    top = candidates[:config.TOP_N]
+    top, per_group = [], {}
+    for cand in candidates:
+        group = (cand["customer"].group_affiliation or "").strip().casefold()
+        if not any(ch.isalnum() for ch in group):
+            group = ""  # Fresho uses '*' (or blank) for "no group"
+        if group and per_group.get(group, 0) >= config.MAX_ACCOUNTS_PER_GROUP:
+            continue
+        top.append(cand)
+        if group:
+            per_group[group] = per_group.get(group, 0) + 1
+        if len(top) == config.TOP_N:
+            break
 
     # Re-running select_top for a run_date that already has locked recommendations
     # must not disturb rows that comms already reference (FK) or reset a status a

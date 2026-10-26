@@ -168,6 +168,23 @@ EXCLUDED_NAME_PATTERNS = [r"fcc\b", r"smobro\b", r"the fine cheese co\b",
                           r"smokin'?\s+brothers\b"]
 # Single dead accounts: Robin's Ramen - residency ended June (Laurence 2026-10-07).
 EXCLUDED_CUSTOMER_CODES |= {"R ROBINRA"}
+# Brompton Oratory: the Oratorian fathers' community house kitchen, not a
+# restaurant (typed 'Restaurants' in Fresho). Jose 2026-10-26: "dismiss".
+EXCLUDED_CUSTOMER_CODES |= {"R BROMPTON"}
+
+# An account only makes the weekly list if it has at least this many gap
+# categories OUTSIDE the prepared lines below. Accounts that already buy
+# almost everything (Alfi, 51 Cave a Manger, Yashin on 2026-10-26) only had
+# prepped fruit/veg left - a weak pitch for a chef-led kitchen (Jose).
+PREP_ONLY_GAP_CATEGORIES = {"Prep Fruit & Juices", "Prep Vegetables"}
+MIN_REAL_GAP_CATEGORIES = 1
+
+# At most this many accounts from one Fresho group affiliation in a week's
+# list (no group = no cap). 2026-10-26: after the prep-only fix the backfill
+# brought in four Manners pubs on top of three Red Carnation hotels - 7 of 15
+# slots for two groups, all Rob's (Jose: a human reviewer would never send
+# that). Keeps multi-site groups in play (Hannah 2026-09-29) without crowding.
+MAX_ACCOUNTS_PER_GROUP = 2
 
 # Groups being handled directly by the team, held out of selection until the
 # date given (a manual cooldown, not a permanent exclusion). Clapham Leisure:
