@@ -87,3 +87,21 @@ what you think."*
 Still "Hi team", no sign-off, one short line on the produce. Hannah put this to
 Laurence as a question ("What do you think?"); write it this way from the 19 Oct
 pull and revise when he replies.
+
+## 2026-10-20 — Results: Option B wins again; name the person; drop "a few to try" (Laurence)
+
+Laurence sent 10 of the 19 Oct pull, **all as Option B (simple)**: *"Again this week
+I'm going to stick to the simple whatsapp message. Last week it got us the best
+results in terms of people replying saying they wanted the sample box."* Three yeses
+(Fresh Hot Pizza, Royal Lancaster, Hons BBQ); Hannah counted 4 of 10 boxes going out.
+
+- **Keep writing both options**, but Option B is now the proven default - make it
+  the strongest version. Option A stays as the alternative.
+- **One-person chats:** *"if in the group chat there is only 1 person from the
+  business, I am addressing them by name instead of 'team' or 'guys'."* We don't
+  have contact names, so keep "Hi team" in drafts; Laurence swaps in the name.
+- **Wording:** *"'can we send you a few to try' - the language doesn't quite work for
+  me here."* Use "Can we send you a sample box to try?" instead.
+- His rewrite for Equal Parts (sent): *"Hi team, we've got leafy lemons in, plus fresh
+  lemon juice & Miyagawas. Can we send you a sample box to try?"* - short, product
+  list, plain offer. That's the Option B target shape.

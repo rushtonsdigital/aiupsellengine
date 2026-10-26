@@ -68,3 +68,11 @@ What that means for picking:
   this month even if it's in the pool; put it in `data_notes` so the list gets fixed.
 - No seasonal file for the month = no flags. Say so in the run summary so the month's
   list gets written (from that month's market report).
+
+## 2026-10-20 — Don't pitch a prepped/alt form of something they already buy (Laurence)
+
+Equal Parts was offered pink grapefruit segments, but *"I can see on whatsapp they're
+already ordering grapefruit - so I changed that to Miyagawa."* The pool only removes
+the exact product they buy, not other forms of it. Before picking a prepped or
+variant line (segments, juice, diced), check `currently_buys` / their top products
+for the base fruit or veg - if they already buy it, pick something genuinely new.
