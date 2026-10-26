@@ -370,3 +370,36 @@ def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     assert pool[0]["season_note"] == "the season of Delica"
     assert "Mushrooms - Girolles Scottish" not in names
     assert "season" not in pool[names.index("Carrots")]
+
+
+def test_accounts_with_only_prep_gaps_are_skipped(conn, monkeypatch):
+    """2026-10-26: an account whose only gaps are prepped lines isn't worth a
+    slot; one real gap is enough to qualify."""
+    monkeypatch.setattr("config.TARGETABLE_CATEGORIES",
+                        ["Vegetables", "Fruits", "Prep Vegetables"])
+    _seed_catalogue(conn)
+    add_customer(conn, "PREPONLY")
+    weekly_orders(conn, "PREPONLY", ["VEG-1", "FRU-1"], START, weeks=5)
+    add_customer(conn, "REALGAP")
+    weekly_orders(conn, "REALGAP", ["VEG-1"], START, weeks=5)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "REALGAP" in codes
+    assert "PREPONLY" not in codes
+
+
+def test_no_more_than_max_accounts_per_group(conn, monkeypatch):
+    monkeypatch.setattr("config.MAX_ACCOUNTS_PER_GROUP", 2)
+    _seed_catalogue(conn)
+    for code in ("G1", "G2", "G3", "SOLO", "STAR1", "STAR2", "STAR3"):
+        add_customer(conn, code)
+        if code.startswith("STAR"):
+            conn.execute(db.customers.update().where(db.customers.c.customer_code == code)
+                         .values(group_affiliation="*"))
+        elif code != "SOLO":
+            conn.execute(db.customers.update().where(db.customers.c.customer_code == code)
+                         .values(group_affiliation="Manners Pubs Group"))
+        weekly_orders(conn, code, ["VEG-1"], START, weeks=5)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert len(codes & {"G1", "G2", "G3"}) == 2
+    assert "SOLO" in codes
+    assert {"STAR1", "STAR2", "STAR3"} <= codes   # '*' means no group
