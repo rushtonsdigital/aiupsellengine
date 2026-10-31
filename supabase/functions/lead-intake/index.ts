@@ -372,6 +372,28 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: "unreadable body" });
   }
 
+  // Dry run for testing and tuning the AI step: the same research and rating
+  // a real lead gets, returned to the caller — nothing saved, nobody emailed.
+  // Gated by a key kept in public.function_settings (name 'dryrun_key',
+  // written over DATABASE_URL, unreadable via the API) and sent as `apikey`,
+  // so the public form endpoint can't be used to spend AI credit.
+  if (body["action"] === "analyse") {
+    const { data: setting } = await db.from("function_settings")
+      .select("value").eq("name", "dryrun_key").maybeSingle();
+    const key = req.headers.get("apikey") || "";
+    if (!setting?.value || key.length < 20 || key !== setting.value) {
+      return json({ ok: false, reason: "forbidden" }, 403);
+    }
+    const a = await analyse({
+      business: body["business"] || "", name: body["name"] || "",
+      email: (body["email"] || "").toLowerCase(), phone: body["phone"] || "",
+      heard_about: body["heard_about"] || "",
+      lead_source: body["lead_source"] || "Contact Page Form",
+      page_url: body["page_url"] || "",
+    });
+    return json(a ? { ok: true, ...a } : { ok: false, reason: "analysis failed" });
+  }
+
   if (body["action"] === "retry") {
     const job = retryPending().catch((e) => console.error("retry failed", String(e)));
     EdgeRuntime.waitUntil(job);
