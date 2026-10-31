@@ -327,5 +327,7 @@ LEAD_QUIET_DAYS = 60
 LEAD_LOST_REASONS = ["Not a fit", "No response", "Price",
                      "Chose another supplier", "Outside delivery area",
                      "Personal / not trade", "Duplicate", "Other"]
-# Who can own and work leads (also the "who are you" picker until logins).
-LEAD_TEAM = ["Laurence", "Hannah", "Harry", "Ben", "Rob"]
+# Who can own and work leads (also the "who are you" picker until logins):
+# everyone with customer accounts in Fresho (customers.sales_rep, read each
+# build), minus these Fresho placeholders that aren't people.
+LEAD_TEAM_NOT_PEOPLE = {"Market Customer", "Customer Service"}

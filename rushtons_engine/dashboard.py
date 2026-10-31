@@ -35,6 +35,7 @@ from output/outreach_drafts.json; Python never invents customer-facing words.
 import html
 import json
 import logging
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -634,6 +635,18 @@ def _load_cats_all() -> tuple[list, dict]:
     return master, out
 
 
+def _lead_team() -> list:
+    """Everyone with customer accounts in Fresho, as first names ("Ben
+    (Rushtons)" -> "Ben"), so the list follows Fresho with no upkeep."""
+    try:
+        rows = _rows("select distinct sales_rep from customers "
+                     "where sales_rep is not null", limit=500)
+    except Exception:
+        return []
+    names = {re.sub(r"\s*\(.*?\)\s*$", "", r["sales_rep"]).strip() for r in rows}
+    return sorted(n for n in names if n and n not in config.LEAD_TEAM_NOT_PEOPLE)
+
+
 def _load_leads() -> list:
     """Leads for the dashboard: fields, pipeline state and activity history
     (acts = [at, kind, stage, note, due, actor], oldest first)."""
@@ -909,7 +922,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "leadFollowUp": config.LEAD_FOLLOW_UP_DAYS,
         "leadQuietDays": config.LEAD_QUIET_DAYS,
         "leadLost": config.LEAD_LOST_REASONS,
-        "leadTeam": config.LEAD_TEAM,
+        "leadTeam": _lead_team(),
         "value": values,
         "valueMonths": value_months,
         "hist": history,

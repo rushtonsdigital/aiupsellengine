@@ -313,7 +313,7 @@ leads = sa.Table(
     sa.Column("analysed_at", sa.DateTime(timezone=True)),
     sa.Column("notified_at", sa.DateTime(timezone=True)),
     sa.Column("status_changed_at", sa.DateTime(timezone=True)),
-    sa.Column("owner", sa.Text),           # who is working the lead (LEAD_TEAM)
+    sa.Column("owner", sa.Text),           # who is working the lead (a Fresho rep)
     sa.Column("next_follow_up", sa.Date),  # set by hand; null = stage rule
     sa.Column("lost_reason", sa.Text),     # when status = Discarded (Lost)
 )
