@@ -187,7 +187,9 @@ const TYPES = ["Independent Restaurant", "Hospitality Group", "Hotel",
   "Pub / Bar", "Cafe / Bakery", "Event Caterer", "Contract Caterer",
   "Food Producer", "Other"];
 
-type Analysis = { text: string; rating: number | null; type: string | null };
+type Analysis = { text: string; rating: number | null; type: string | null;
+  // deno-lint-ignore no-explicit-any
+  diag: any };
 
 // deno-lint-ignore no-explicit-any
 type Lead = Record<string, any>;
@@ -208,6 +210,10 @@ async function analyse(lead: Lead): Promise<Analysis | null> {
   const messages: any[] = [{ role: "user", content:
     `Qualify this website enquiry.\n\n<enquiry>\n${enquiry}\n</enquiry>` }];
   const started = Date.now();
+  // What the web search actually did, per request: logged for every lead
+  // and returned by the dry run, so a thin write-up can be explained.
+  // deno-lint-ignore no-explicit-any
+  const diag: any = { turns: [], searches: 0, errors: [] };
   for (let turn = 0; turn < 4; turn++) {
     // deno-lint-ignore no-explicit-any
     const resp: any = await client.beta.messages.create({
@@ -218,13 +224,25 @@ async function analyse(lead: Lead): Promise<Analysis | null> {
       output_config: { effort: "medium" },
       system: SYSTEM,
       tools: [{
-        type: "web_search_20260209", name: "web_search", max_uses: 5,
+        type: "web_search_20260209", name: "web_search", max_uses: 10,
         user_location: { type: "approximate", city: "London", country: "GB",
                          timezone: "Europe/London" },
       }],
       messages,
     // deno-lint-ignore no-explicit-any
     } as any);
+    // deno-lint-ignore no-explicit-any
+    for (const b of resp.content as any[]) {
+      if (b.type === "server_tool_use") diag.searches++;
+      if (b.type?.endsWith("_tool_result") && b.content && !Array.isArray(b.content)
+          && (b.content.error_code || b.content.type?.includes("error"))) {
+        diag.errors.push(`${b.type}: ${b.content.error_code
+          || JSON.stringify(b.content).slice(0, 200)}`);
+      }
+    }
+    diag.turns.push({ stop: resp.stop_reason, usage: resp.usage?.server_tool_use,
+      // deno-lint-ignore no-explicit-any
+      blocks: (resp.content as any[]).map((b) => b.type + (b.name ? `:${b.name}` : "")) });
     if (resp.stop_reason === "pause_turn"
         && Date.now() - started < AI_DEADLINE_MS) {
       messages.push({ role: "assistant", content: resp.content });
@@ -243,10 +261,13 @@ async function analyse(lead: Lead): Promise<Analysis | null> {
     const tm = text.match(/^\s*TYPE:\s*(.+?)\s*$/im);
     const type = tm ? TYPES.find((t) => t.toLowerCase() === tm[1].toLowerCase())
       || "Other" : null;
+    console.log("analysis", lead.source_id || "(dry run)",
+      JSON.stringify({ searches: diag.searches, errors: diag.errors,
+        turns: diag.turns.map((t: { stop: string }) => t.stop) }));
     return {
       text: text.replace(/^\s*TYPE:.*$/im, "").trim(),
       rating: rm ? Number(rm[1]) : null,
-      type,
+      type, diag,
     };
   }
   return null;
