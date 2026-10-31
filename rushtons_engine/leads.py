@@ -244,7 +244,7 @@ def apply_manual_matches(conn, mapping: dict) -> int:
 
 LEAD_STATUSES = tuple(key for key, _ in config.LEAD_STAGES)
 CONTACT_KINDS = ("call", "email", "whatsapp", "visit", "sample")
-ACTIVITY_KINDS = ("stage", "note", "follow_up", "owner") + CONTACT_KINDS
+ACTIVITY_KINDS = ("stage", "note", "follow_up", "owner", "verdict") + CONTACT_KINDS
 
 
 def _parse_at(value):
@@ -271,6 +271,8 @@ def apply_activity_log(conn, events: list, source: str = "dashboard") -> int:
                  clears the hand-set follow-up unless the event carries `due`
       follow_up  next_follow_up = due ('' clears it -> back to the stage rule)
       owner      owner = owner ('' = unassigned)
+      verdict    the team overrides the AI verdict (verdict = note,
+                 verdict_source = 'team'), e.g. "Pursue anyway" on a Reject
       call/email/whatsapp/visit/sample/note: logged; `due` sets a follow-up
     """
     known = {r.source_id for r in conn.execute(sa.select(db.leads.c.source_id))}
@@ -297,6 +299,9 @@ def apply_activity_log(conn, events: list, source: str = "dashboard") -> int:
             note = (ev.get("reason") or note).strip()
         if kind == "owner":
             note = (ev.get("owner") or "").strip()
+        if kind == "verdict" and note not in config.LEAD_VERDICTS:
+            log.warning("lead event %r: unknown verdict %r skipped", eid, note)
+            continue
         conn.execute(db.lead_activities.insert().values(
             event_id=eid, source_id=sid, occurred_at=at, kind=kind,
             stage=stage, note=note[:1000] or None, follow_up_on=due,
@@ -313,6 +318,8 @@ def apply_activity_log(conn, events: list, source: str = "dashboard") -> int:
             values["next_follow_up"] = due
         elif kind == "owner":
             values["owner"] = note or None
+        elif kind == "verdict":
+            values.update(verdict=note, verdict_source="team")
         elif due:
             values["next_follow_up"] = due
         conn.execute(db.leads.update().where(db.leads.c.source_id == sid)

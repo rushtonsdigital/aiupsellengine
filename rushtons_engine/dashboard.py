@@ -215,7 +215,9 @@ Q_LEADS = """
 select source_id, name, business, email, phone, lead_source, analysis, notes,
        submitted_at, status, rating, type, details, excluded_reason,
        matched_customer_code, match_method, intake, heard_about, page_url,
-       received_at, status_changed_at, owner, next_follow_up, lost_reason
+       received_at, status_changed_at, owner, next_follow_up, lost_reason,
+       verdict, verdict_reason, verdict_source, urgency, postcode, website,
+       research
 from leads order by submitted_at desc nulls last, received_at desc nulls last
 """
 
@@ -635,6 +637,15 @@ def _load_cats_all() -> tuple[list, dict]:
     return master, out
 
 
+def _research_sources(research) -> list:
+    """Source links the AI cited (research JSON), for the lead page."""
+    try:
+        srcs = json.loads(research or "{}").get("sources") or []
+    except (ValueError, AttributeError):
+        return []
+    return [u for u in srcs if isinstance(u, str) and u.startswith("http")][:10]
+
+
 def _lead_team() -> list:
     """Everyone with customer accounts in Fresho, as first names ("Ben
     (Rushtons)" -> "Ben"), so the list follows Fresho with no upkeep."""
@@ -688,6 +699,13 @@ def _load_leads() -> list:
             "next": str(r["next_follow_up"] or ""),
             "lost": r["lost_reason"] or "",
             "acts": acts.get(r["source_id"], []),
+            "verdict": r["verdict"] or "",
+            "vwhy": r["verdict_reason"] or "",
+            "vsrc": r["verdict_source"] or "",
+            "urg": r["urgency"] or "",
+            "pc": r["postcode"] or "",
+            "site": r["website"] or "",
+            "srcs": _research_sources(r["research"]),
         })
     return out
 
@@ -923,6 +941,8 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "leadQuietDays": config.LEAD_QUIET_DAYS,
         "leadLost": config.LEAD_LOST_REASONS,
         "leadTeam": _lead_team(),
+        "leadVerdicts": config.LEAD_VERDICTS,
+        "leadVerdictDue": config.LEAD_VERDICT_DUE_DAYS,
         "value": values,
         "valueMonths": value_months,
         "hist": history,
@@ -1588,6 +1608,7 @@ input[type="date"].act { cursor:text; }
             placeholder="Search business, contact, email…" aria-label="Search leads">
           <select class="act" id="leadstatus" aria-label="Filter by stage"></select>
           <select class="act" id="leadowner" aria-label="Filter by owner"></select>
+          <select class="act" id="leadverdict" aria-label="Filter by AI verdict"></select>
           <select class="act" id="leadrating" aria-label="Filter by rating">
             <option value="0">Any rating</option>
             <option value="4">&#9733;4 and up</option>
@@ -2457,6 +2478,7 @@ input[type="date"].act { cursor:text; }
   var CONTACT_KINDS = {call:'Called', email:'Emailed', whatsapp:'WhatsApp',
     visit:'Visited', sample:'Sample sent'};
   var LKIND = {stage:'Stage', note:'Note', follow_up:'Follow-up', owner:'Owner',
+    verdict:'Verdict',
     call:'Called', email:'Emailed', whatsapp:'WhatsApp', visit:'Visited',
     sample:'Sample sent', received:'Enquiry'};
   var VERB = {New:'Respond', Contacted:'Chase', Qualified:'Keep warm',
@@ -2532,6 +2554,7 @@ input[type="date"].act { cursor:text; }
   // Effective pipeline state of a lead, and when it is next due.
   function leadView(l){
     var v = {st: l.status || 'New', owner: l.owner || '', next: l.next || '',
+      verdict: l.verdict || '', vsrc: l.vsrc || '',
       lost: l.lost || '', touch: dayOf(l.chg || l.recv || l.date || ''),
       acts: leadActs(l), reached: 0};
     v.acts.forEach(function(e){
@@ -2541,6 +2564,7 @@ input[type="date"].act { cursor:text; }
           v.next = e.due || '';
         } else if(e.kind === 'follow_up') v.next = e.due || '';
         else if(e.kind === 'owner') v.owner = e.note || '';
+        else if(e.kind === 'verdict'){ v.verdict = e.note; v.vsrc = 'team'; }
         else if(e.due) v.next = e.due;
       }
       if(e.kind !== 'owner' && e.kind !== 'follow_up'){
@@ -2554,10 +2578,15 @@ input[type="date"].act { cursor:text; }
     if(FUNNEL.indexOf(v.st) > v.reached) v.reached = FUNNEL.indexOf(v.st);
     v.open = OPEN.indexOf(v.st) >= 0;
     v.due = ''; v.auto = false; v.dueIn = null; v.quiet = false;
-    if(v.open){
+    // An AI Reject waits for a person to confirm it; it has no follow-up.
+    v.rejectCheck = v.open && v.verdict === 'Reject' && !v.next;
+    if(v.open && !v.rejectCheck){
       if(v.next) v.due = v.next;
       else if(v.touch){
-        v.due = addDays(v.touch, (DATA.leadFollowUp || {})[v.st] || 7);
+        var vd = (DATA.leadVerdictDue || {})[v.verdict];
+        v.ruleDays = v.st === 'New' && vd !== undefined ? vd
+          : ((DATA.leadFollowUp || {})[v.st] || 7);
+        v.due = addDays(v.touch, v.ruleDays);
         v.auto = true;
       }
       var t = todayIso();
@@ -2568,6 +2597,26 @@ input[type="date"].act { cursor:text; }
     return v;
   }
 
+  var VLABEL = {'Pursue with urgency': 'URGENT', 'Pursue': 'Pursue',
+    'Nurture': 'Nurture', 'Pass to rep': 'Pass to rep', 'Reject': 'AI: reject'};
+  var VCOLOR = {'Pursue with urgency': '#d03b3b', 'Pursue': '#007946',
+    'Nurture': '#5f6b7a', 'Pass to rep': '#c98500', 'Reject': '#898781'};
+  function verdictChip(vd){
+    if(!vd) return '';
+    var c = VCOLOR[vd] || '#898781';
+    return '<span class="pill" style="border:1px solid ' + c + ';color:' + c
+      + (vd === 'Pursue with urgency' ? ';font-weight:700' : '') + '">'
+      + esc(VLABEL[vd] || vd) + '</span>';
+  }
+  function lostReasonFor(why){
+    if(/delivery area/i.test(why)) return 'Outside delivery area';
+    if(/consumer|personal/i.test(why)) return 'Personal / not trade';
+    return 'Not a fit';
+  }
+  function rejectBtns(l){
+    return '<button class="act mini" data-vlost="' + esc(l.sid) + '">Confirm Lost</button>'
+      + '<button class="act mini" data-vpursue="' + esc(l.sid) + '">Pursue anyway</button>';
+  }
   function leadChip(st){
     var c = st === 'Acquired' ? '#007946' : st === 'Discarded' ? '#898781'
       : '#c98500';
@@ -2598,6 +2647,10 @@ input[type="date"].act { cursor:text; }
       + STAGES.map(function(s){
           return '<option value="' + esc(s[0]) + '">' + esc(s[1]) + '</option>';
         }).join('');
+    var lvd = document.getElementById('leadverdict');
+    if(lvd) lvd.innerHTML = '<option value="">Any verdict</option>'
+      + (DATA.leadVerdicts || []).map(function(x){
+          return '<option>' + esc(x) + '</option>'; }).join('');
     var lo = document.getElementById('leadowner');
     if(lo) lo.innerHTML = '<option value="">Any owner</option>'
       + '<option value="-">Nobody yet</option>'
@@ -2705,6 +2758,7 @@ input[type="date"].act { cursor:text; }
 
     var sf = fval('leadstatus'), of = fval('leadowner');
     var rf = parseInt(fval('leadrating'), 10) || 0;
+    var vf = fval('leadverdict');
     var q = fval('leadq').trim().toLowerCase();
     var showEx = !!(document.getElementById('leadexcl') || {}).checked;
     var list = all.filter(function(l){
@@ -2715,6 +2769,7 @@ input[type="date"].act { cursor:text; }
       if(of === '-' && v.owner) return false;
       if(of && of !== '-' && v.owner !== of) return false;
       if(rf && (l.rating || 0) < rf) return false;
+      if(vf && v.verdict !== vf) return false;
       if(q && [l.biz, l.name, l.email, l.phone].join(' ').toLowerCase()
           .indexOf(q) < 0) return false;
       return true;
@@ -2729,7 +2784,7 @@ input[type="date"].act { cursor:text; }
       return '<div class="lrow' + (l.excl ? ' excl' : '') + '">'
         + '<button class="lhead" data-golead="' + esc(l.sid) + '">'
         + '<span class="rname">' + esc(lname(l)) + '</span>'
-        + stars(l.rating) + leadChip(v.st) + dueBadge(v)
+        + stars(l.rating) + verdictChip(v.verdict) + leadChip(v.st) + dueBadge(v)
         + (v.owner ? '<span class="owner">' + esc(v.owner) + '</span>' : '')
         + (l.excl ? '<span class="pill">' + esc(l.excl) + '</span>' : '')
         + '<span class="dmeta">' + esc(l.src) + (l.date ? ' · ' + esc(l.date) : '')
@@ -2751,6 +2806,7 @@ input[type="date"].act { cursor:text; }
     if(e.kind === 'stage') detail = '→ ' + (STAGE_LBL[e.stage] || e.stage)
       + (e.stage === 'Discarded' && e.note ? ' (' + e.note + ')' : '');
     else if(e.kind === 'owner') detail = '→ ' + (e.note || 'nobody');
+    else if(e.kind === 'verdict') detail = '→ ' + (e.note || '');
     else if(e.kind === 'follow_up') detail = e.due ? 'set for ' + fmtDay(e.due)
       : 'back to the stage rule';
     else {
@@ -2818,6 +2874,22 @@ input[type="date"].act { cursor:text; }
       + '<span class="chip">enquired ' + esc(fmtDay(dayOf(l.recv || l.date)))
       + '</span></div>';
 
+    if(v.verdict){
+      h += '<div class="lbox"><div class="dh">AI VERDICT'
+        + (v.vsrc === 'team' ? ' (changed by the team)' : '') + '</div>'
+        + '<div>' + verdictChip(v.verdict) + ' <span class="said">'
+        + (v.vsrc === 'team' ? 'Set by the team.' + (l.vwhy ? ' The AI's note: '
+           + esc(l.vwhy) : '') : esc(l.vwhy)) + '</span></div>'
+        + (l.urg ? '<p class="said" style="margin:.3rem 0 0">Urgency: '
+           + esc(l.urg) + '</p>' : '')
+        + '<div class="acts">'
+        + (v.rejectCheck ? rejectBtns(l)
+           : '<label class="said">Change verdict <select class="act" data-lverdict="'
+             + e + '">' + (DATA.leadVerdicts || []).map(function(x){
+               return '<option' + (x === v.verdict ? ' selected' : '') + '>'
+                 + esc(x) + '</option>'; }).join('') + '</select></label>')
+        + '</div></div>';
+    }
     h += '<div class="dh">STAGE</div><div class="stepper" role="group" '
       + 'aria-label="Lead stage">';
     STAGES.forEach(function(s){
@@ -2849,7 +2921,7 @@ input[type="date"].act { cursor:text; }
           + (v.dueIn > 0 ? '<span class="said">in ' + plural(v.dueIn, 'day')
              + '</span>' : dueBadge(v)) : '—') + '</div>'
         + '<p class="said" style="margin:.2rem 0 0">' + (v.auto
-          ? 'Automatic — ' + plural((DATA.leadFollowUp || {})[v.st] || 7, 'day')
+          ? 'Automatic — ' + plural(v.ruleDays, 'day')
             + ' after the last touch (' + esc(fmtDay(v.touch)) + ') while '
             + esc((STAGE_LBL[v.st] || v.st).toLowerCase()) + '.'
           : 'Set by hand.') + '</p>'
@@ -2905,6 +2977,15 @@ input[type="date"].act { cursor:text; }
       h += '<p class="said">Stage ' + esc(STAGE_LBL[l.status] || l.status)
         + ' came from the old leads sheet.</p>';
 
+    if(l.pc || l.site) h += '<div class="facts">'
+      + (l.pc ? '<span>postcode <b>' + esc(l.pc) + '</b></span>' : '')
+      + (l.site ? '<span><a href="' + esc(l.site) + '" target="_blank" rel="noopener">'
+         + esc(l.site.replace(/^https?:\/\//, '')) + '</a></span>' : '') + '</div>';
+    if(l.srcs && l.srcs.length) h += '<details class="help"><summary>Sources the AI'
+      + ' used (' + l.srcs.length + ')</summary><ol class="said">'
+      + l.srcs.map(function(u){ return '<li><a href="' + esc(u)
+        + '" target="_blank" rel="noopener">' + esc(u) + '</a></li>'; }).join('')
+      + '</ol></details>';
     if(l.analysis) h += '<div class="dh">AI RESEARCH</div><div class="draft">'
       + esc(l.analysis) + '</div>';
     if(l.notes || l.details) h += '<div class="dh">NOTES FROM THE OLD SHEET</div>'
@@ -2986,10 +3067,12 @@ input[type="date"].act { cursor:text; }
     var me = whoAmI();
     var mine = !!(document.getElementById('fumine') || {}).checked;
     var g = {over: [], today: [], soon: [], quiet: []}, checks = [], dueAll = 0;
+    var rejects = [];
     (DATA.leads || []).forEach(function(l){
       if(l.excl) return;
       var v = leadView(l);
       if(v.open && !v.quiet && v.dueIn !== null && v.dueIn <= 0) dueAll++;
+      if(v.rejectCheck) dueAll++;
       var sg = sugFor(l);
       if(sg){
         var sd = dirRow(sg[0]);
@@ -3003,6 +3086,7 @@ input[type="date"].act { cursor:text; }
       if(!v.open) return;
       if(mine && v.owner && v.owner !== me) return;
       var it = {l: l, v: v};
+      if(v.rejectCheck){ rejects.push(it); return; }
       if(v.quiet) g.quiet.push(it);
       else if(v.dueIn === null || v.dueIn > 7) return;
       else if(v.dueIn < 0) g.over.push(it);
@@ -3021,7 +3105,8 @@ input[type="date"].act { cursor:text; }
       return '<div class="card"><div class="crow">'
         + '<span class="cverb">' + esc(verb || VERB[v.st] || 'Follow up') + '</span>'
         + '<button class="cname" data-golead="' + esc(l.sid) + '">'
-        + esc(lname(l)) + '</button>' + stars(l.rating) + dueBadge(v) + '</div>'
+        + esc(lname(l)) + '</button>' + stars(l.rating) + verdictChip(v.verdict)
+        + dueBadge(v) + '</div>'
         + '<div class="cwhy">' + esc(why || ((STAGE_LBL[v.st] || v.st)
           + ', last touched ' + fmtDay(v.touch)
           + (v.auto ? ' · ' + ((DATA.leadFollowUp || {})[v.st] || 7) + '-day rule'
@@ -3034,7 +3119,16 @@ input[type="date"].act { cursor:text; }
       return '<h3>' + title + ' (' + items.length + ')</h3>'
         + items.sort(byDue).map(function(it){ return card(it); }).join('');
     };
-    var h = block('Overdue', g.over) + block('Due today', g.today)
+    var h = '';
+    if(rejects.length) h += '<h3>AI rejected — check (' + rejects.length + ')</h3>'
+      + rejects.map(function(it){
+          return '<div class="card"><div class="crow"><span class="cverb">Check</span>'
+            + '<button class="cname" data-golead="' + esc(it.l.sid) + '">'
+            + esc(lname(it.l)) + '</button>' + verdictChip('Reject')
+            + '<span class="cbtns">' + rejectBtns(it.l) + '</span></div>'
+            + '<div class="cwhy">' + esc(it.l.vwhy || 'rejected by the AI')
+            + '</div></div>'; }).join('');
+    h += block('Overdue', g.over) + block('Due today', g.today)
       + block('Next 7 days', g.soon);
     if(!h) h = '<p class="said">Nothing due in the next week'
       + (mine ? ' for you' : '') + '.</p>';
@@ -3254,6 +3348,18 @@ input[type="date"].act { cursor:text; }
       else if(before === 'New') logLead(asid, 'stage', {stage: 'Contacted'});
       return;
     }
+    var vlo = ev.target.closest && ev.target.closest('[data-vlost]');
+    if(vlo){
+      var vsid = vlo.getAttribute('data-vlost');
+      logLead(vsid, 'stage', {stage: 'Discarded',
+        reason: lostReasonFor((leadBySid(vsid) || {}).vwhy || '')});
+      return;
+    }
+    var vpu = ev.target.closest && ev.target.closest('[data-vpursue]');
+    if(vpu){
+      logLead(vpu.getAttribute('data-vpursue'), 'verdict', {note: 'Pursue'});
+      return;
+    }
     var lnt = ev.target.closest && ev.target.closest('[data-lnote]');
     if(lnt){
       var nsid = lnt.getAttribute('data-lnote');
@@ -3305,6 +3411,8 @@ input[type="date"].act { cursor:text; }
     if(wh){ setMe(wh.value); fillWhoami(); renderLeadRecs(); return; }
     var low = ev.target.closest && ev.target.closest('[data-lowner]');
     if(low){ logLead(low.getAttribute('data-lowner'), 'owner', {owner: low.value}); }
+    var lvs = ev.target.closest && ev.target.closest('[data-lverdict]');
+    if(lvs){ logLead(lvs.getAttribute('data-lverdict'), 'verdict', {note: lvs.value}); }
     var lfd = ev.target.closest && ev.target.closest('[data-lfudate]');
     if(lfd && lfd.value){
       logLead(lfd.getAttribute('data-lfudate'), 'follow_up', {due: lfd.value}); }
@@ -3317,7 +3425,7 @@ input[type="date"].act { cursor:text; }
     if(el) el.addEventListener('change', function(){ renderDir(); });
   });
   initLeadFilters();
-  ['leadstatus', 'leadowner', 'leadrating', 'leadexcl'].forEach(function(id){
+  ['leadstatus', 'leadowner', 'leadverdict', 'leadrating', 'leadexcl'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.addEventListener('change', function(){ renderLeads(); });
   });

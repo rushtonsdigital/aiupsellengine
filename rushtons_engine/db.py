@@ -316,6 +316,15 @@ leads = sa.Table(
     sa.Column("owner", sa.Text),           # who is working the lead (a Fresho rep)
     sa.Column("next_follow_up", sa.Date),  # set by hand; null = stage rule
     sa.Column("lost_reason", sa.Text),     # when status = Discarded (Lost)
+    # AI research verdict (lead-intake): Reject | Nurture | Pursue |
+    # Pursue with urgency | Pass to rep; verdict_source ai | team (override)
+    sa.Column("verdict", sa.Text),
+    sa.Column("verdict_reason", sa.Text),
+    sa.Column("verdict_source", sa.Text),
+    sa.Column("urgency", sa.Text),         # urgency signals, "; "-joined
+    sa.Column("postcode", sa.Text),
+    sa.Column("website", sa.Text),
+    sa.Column("research", sa.Text),        # the AI's structured fields (JSON)
 )
 
 # Everything the team does to a lead — stage moves, calls, emails, notes,
@@ -330,7 +339,7 @@ lead_activities = sa.Table(
     sa.Column("source_id", sa.Text, nullable=False),   # leads.source_id
     sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("kind", sa.Text, nullable=False),
-    # stage|note|call|email|whatsapp|visit|sample|follow_up|owner
+    # stage|note|call|email|whatsapp|visit|sample|follow_up|owner|verdict
     sa.Column("stage", sa.Text),           # kind=stage: the new stage
     sa.Column("note", sa.Text),            # free text; lost reason; new owner
     sa.Column("follow_up_on", sa.Date),
@@ -396,6 +405,8 @@ _LEAD_INTAKE_COLS = {
     "heard_about": "text", "analysed_at": "timestamptz",
     "notified_at": "timestamptz", "status_changed_at": "timestamptz",
     "owner": "text", "next_follow_up": "date", "lost_reason": "text",
+    "verdict": "text", "verdict_reason": "text", "verdict_source": "text",
+    "urgency": "text", "postcode": "text", "website": "text", "research": "text",
 }
 
 
