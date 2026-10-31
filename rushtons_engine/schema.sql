@@ -239,10 +239,11 @@ create index if not exists idx_interactions_customer
 -- which is personal data loaded into customer_contacts only once the
 -- dashboard sits behind a login.
 
--- Marketing leads, mirrored weekly from the Google Sheet the n8n flow feeds.
--- The sheet stays the source of truth for lead fields; matching + value
--- enrichment live here (leads.py; Hannah's brief 2026-08-06). Volume-only
--- value: there is still no price data anywhere.
+-- Marketing leads. The website forms post straight in via the lead-intake
+-- Edge Function (AI-rated on arrival, sales team emailed); rows before
+-- 2026-10-25 were mirrored from the retired Google Sheet. Status is set on
+-- the dashboard. Matching + value enrichment: leads.py (Hannah's brief
+-- 2026-08-06).
 create table if not exists leads (
   id            bigserial primary key,
   source_id     text unique not null,   -- SessionID, else email|date hash
@@ -265,5 +266,12 @@ create table if not exists leads (
   match_method  text,                   -- auto_name | auto_contact | manual
   match_score   numeric,
   matched_at    timestamptz,
-  updated_at    timestamptz
+  updated_at    timestamptz,
+  intake        text,                   -- web (form webhook) | sheet (legacy)
+  received_at   timestamptz,
+  page_url      text,
+  heard_about   text,                   -- "How did you hear about Rushton's?"
+  analysed_at   timestamptz,            -- AI research finished
+  notified_at   timestamptz,            -- sales-team email sent
+  status_changed_at timestamptz         -- last Status change on the dashboard
 );

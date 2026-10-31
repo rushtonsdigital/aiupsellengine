@@ -195,6 +195,15 @@ layer** for BI reports and ad-hoc data questions:
   Email sync stores metadata only (direction/date/subject/counterparty), never
   bodies. `customer_contacts` is empty until contact data arrives (Fresho
   export or a CS sheet: `python interactions.py contacts file.csv`).
+- **Leads (live, no n8n/sheet)**: the website's Elementor forms post to the Supabase Edge
+  Function `lead-intake` (`supabase/functions/lead-intake/index.ts`), which saves the lead to
+  `leads`, researches + rates it with Claude (web search), and emails the sales team. It must
+  answer within ~5s or Elementor shows the visitor an error, so the slow work runs after the
+  response. Redeploy by pasting the file into Supabase > Edge Functions > lead-intake > Code
+  (JWT verification stays OFF — Elementor can't send a key). Config lives in Edge Function
+  Secrets (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `LEAD_NOTIFY_FROM`, `LEAD_NOTIFY_TO`,
+  `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). Status is edited on the dashboard and harvested
+  weekly; `python leads.py retry` finishes leads whose AI/email step failed.
 - Performance note: the summary tables answer in ~100ms and the whole dashboard
   builds in ~1s. `v_order_lines` scans all order lines (~9s) — use it for
   drill-down only, never for aggregates.

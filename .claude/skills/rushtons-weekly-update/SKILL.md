@@ -194,7 +194,13 @@ the drafts and re-apply.
 2. **Harvest the live page state** — `Artifact` read
    `https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW` with `path: index.html`, extract
    `<script id="dash-state">` to `state.json`, then
-   `python interactions.py harvest state.json`.
+   `python interactions.py harvest state.json` (this also folds in lead Status changes and
+   lead-to-account links made on the page).
+   **Leads** need no download: the website forms post straight into the `leads` table via the
+   `lead-intake` Edge Function (AI-rated, sales team emailed). Run
+   `python rushtons_engine\leads.py retry` to finish any web lead whose AI write-up or email
+   didn't complete, and mention in the report any lead from the week still unrated. The Google
+   Sheet and n8n are retired — never re-import the sheet.
 3. Rebuild with that state: `dashboard.write(date(<Monday>), state=json.load(open('state.harvested.json')))`
    (`run_weekly` rebuilds without state — never publish that file as is; it wipes assignments).
 4. Publish the file to the same URL with `capabilities: {"artifact": {}}`.

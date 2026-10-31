@@ -276,9 +276,10 @@ interactions = sa.Table(
 sa.Index("idx_interactions_customer",
          interactions.c.customer_code, interactions.c.occurred_at)
 
-# Marketing leads, mirrored weekly from the Google Sheet the n8n flow feeds
-# (the sheet stays the source of truth for lead fields; matching and value
-# enrichment live here — see leads.py and Hannah's brief 2026-08-06).
+# Marketing leads. Since 2026-10-25 the website forms post straight in via the
+# lead-intake Edge Function (supabase/functions/lead-intake), AI-rated on
+# arrival; older rows were mirrored from the retired Google Sheet. Matching
+# and value enrichment — see leads.py and Hannah's brief 2026-08-06.
 leads = sa.Table(
     "leads", metadata,
     sa.Column("id", sa.BigInteger().with_variant(sa.Integer, "sqlite"),
@@ -305,6 +306,13 @@ leads = sa.Table(
     sa.Column("match_score", sa.Numeric),
     sa.Column("matched_at", sa.DateTime(timezone=True)),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
+    sa.Column("intake", sa.Text),          # web (form webhook) | sheet (legacy)
+    sa.Column("received_at", sa.DateTime(timezone=True)),
+    sa.Column("page_url", sa.Text),
+    sa.Column("heard_about", sa.Text),     # "How did you hear about Rushton's?"
+    sa.Column("analysed_at", sa.DateTime(timezone=True)),
+    sa.Column("notified_at", sa.DateTime(timezone=True)),
+    sa.Column("status_changed_at", sa.DateTime(timezone=True)),
 )
 
 _engine = None
@@ -326,6 +334,7 @@ def init_db(engine: sa.Engine | None = None) -> sa.Engine:
     _migrate_recommendations(engine)
     _migrate_products(engine)
     _migrate_customers_crm(engine)
+    _migrate_leads(engine)
     if engine.dialect.name == "postgresql":
         apply_reporting_views(engine)
     return engine
@@ -355,6 +364,34 @@ def _migrate_customers_crm(engine: sa.Engine) -> None:
     with engine.begin() as conn:
         for name, typ in todo:
             conn.execute(sa.text(f"alter table customers add column {name} {typ}"))
+
+
+_LEAD_INTAKE_COLS = {
+    "intake": "text", "received_at": "timestamptz", "page_url": "text",
+    "heard_about": "text", "analysed_at": "timestamptz",
+    "notified_at": "timestamptz", "status_changed_at": "timestamptz",
+}
+
+
+def _migrate_leads(engine: sa.Engine) -> None:
+    """Add the direct-intake columns to an existing leads table (same pattern
+    as _migrate_customers_crm). Rows that predate them came from the sheet."""
+    inspector = sa.inspect(engine)
+    if not inspector.has_table("leads"):
+        return
+    cols = {c["name"] for c in inspector.get_columns("leads")}
+    todo = [(n, t) for n, t in _LEAD_INTAKE_COLS.items() if n not in cols]
+    if not todo:
+        return
+    with engine.begin() as conn:
+        for name, typ in todo:
+            if engine.dialect.name != "postgresql":
+                typ = "timestamp" if typ == "timestamptz" else typ
+            conn.execute(sa.text(f"alter table leads add column {name} {typ}"))
+        conn.execute(sa.text(
+            "update leads set intake = 'sheet' where intake is null"))
+        if engine.dialect.name == "postgresql":
+            conn.execute(sa.text("notify pgrst, 'reload schema'"))
 
 
 def _migrate_contacts(engine: sa.Engine) -> None:

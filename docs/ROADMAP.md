@@ -1,6 +1,6 @@
 # Rushton's Commercial Dashboard & Upsell Engine — status and roadmap
 
-_Last updated 2026-10-24. Start here in a new session, then read `CLAUDE.md`._
+_Last updated 2026-10-25. Start here in a new session, then read `CLAUDE.md`._
 
 ## Where things stand
 
@@ -26,6 +26,32 @@ financial year runs Nov–Oct. Target: team using the dashboard by early Novembe
   monthly seasonal list `rushtons_engine/seasonal/seasonal_YYYY-MM.csv`.
 - **Security** — the public (anon) key is revoked on every `public` table; re-check whenever
   anything is exposed through the Supabase API.
+
+## Pending go-live: leads straight from the website (built 25 Oct, PR #18)
+
+The `lead-intake` Edge Function is deployed but the forms still post to n8n. To finish:
+
+1. **Jose** — Supabase → Edge Functions → lead-intake → Settings: switch OFF "Verify JWT
+   with legacy secret" (Claude was blocked from changing it). Must happen BEFORE step 4, or
+   every form submission fails and visitors see an error.
+2. **Jose** — Resend (resend.com): sign up, add the sending domain (EU) — Jose's choice, a GoodBytes domain is fine since the
+   emails only go to the Rushton's team, never to customers — add
+   its DNS records in Cloudflare (Resend's Cloudflare button, or Claude can do it in Chrome on
+   a yes), create a sending API key. The same Resend account later sends the dashboard
+   login emails (Supabase Auth → SMTP: host `smtp.resend.com`, user `resend`, password = a
+   Resend key).
+3. **Jose** — Supabase → Edge Functions → Secrets: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`,
+   `LEAD_NOTIFY_FROM` = `Rushton's leads <leads@<that domain>>`,
+   `LEAD_NOTIFY_TO` (suggested: `laurence@rushtonsgreengrocer.co.uk, goodbytesnetwork@gmail.com`),
+   `LEAD_NOTIFY_INTERNAL_TO` = `goodbytesnetwork@gmail.com`,
+   `DASHBOARD_URL` = `https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW`.
+4. **Claude** — test AI + email on the dummy lead (`python leads.py retry`, source_id
+   `w|f7b9adbe9c8bf368`), then in WordPress (non-www host) Elementor → Tools → Replace URL:
+   `https://goodbytes.app.n8n.cloud/webhook/elementor-form-webhook` →
+   `https://bhlgphaokfbhcetzersv.supabase.co/functions/v1/lead-intake`; submit one real test
+   through the Contact form; final legacy import of the sheet (`leads.py sync`; DB has sheet
+   rows to 2 Sep); delete the dummy lead; merge PR #18; republish the dashboard.
+5. **Jose** — switch off the n8n workflow once a real lead has come through.
 
 ## Suggested features, in priority order
 
@@ -59,6 +85,10 @@ financial year runs Nov–Oct. Target: team using the dashboard by early Novembe
    they're going to go").
 7. **Leads connected properly** (Hannah's ask on 19 Oct) — £ of converted leads, an
    "Add prospect" form (needs #1), lead → customer conversion tracking.
+   *Done 25 Oct:* the website forms post straight into Supabase (`lead-intake` Edge
+   Function) — AI research + rating on arrival and a sales-team email; n8n and the sheet are
+   retired; Status is set on the dashboard. New leads still reach the dashboard only at the
+   weekly republish until #1 (live data) lands.
 8. **Seasonal list from the full produce list** — waiting on Harry/Laurence; then monthly from
    the market report PDF.
 

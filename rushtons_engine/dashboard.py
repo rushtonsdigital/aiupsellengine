@@ -213,8 +213,8 @@ from customer_category_metrics order by customer_code, line_count desc
 Q_LEADS = """
 select source_id, name, business, email, phone, lead_source, analysis, notes,
        submitted_at, status, rating, type, details, excluded_reason,
-       matched_customer_code, match_method
-from leads order by submitted_at desc nulls last
+       matched_customer_code, match_method, intake, heard_about, page_url
+from leads order by submitted_at desc nulls last, received_at desc nulls last
 """
 
 
@@ -647,9 +647,11 @@ def _load_leads() -> list:
             "excl": r["excluded_reason"] or "",
             "matched": r["matched_customer_code"] or "",
             "method": r["match_method"] or "",
-            "analysis": analysis[:420] + ("…" if len(analysis) > 420 else ""),
+            "analysis": analysis[:900] + ("…" if len(analysis) > 900 else ""),
             "notes": (r["notes"] or "")[:200],
             "details": (r["details"] or "")[:200],
+            "web": r["intake"] == "web",
+            "heard": r["heard_about"] or "",
         })
     return out
 
@@ -1427,10 +1429,12 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       <div class="play">
         <div class="tag">LEADS</div>
         <h2>Lead pipeline</h2>
-        <p class="lede">Mirrored from the marketing leads sheet (n8n keeps it
-          fed; update Status there). Acquired leads link to their Fresho account
-          — automatically when the name matches, by hand below when it doesn't —
-          and pull ongoing orders and &#163; sales from Fresho.</p>
+        <p class="lede">Website enquiries arrive here straight from the forms,
+          researched and rated by AI the moment they come in (the sales team
+          gets the same write-up by email). Set each lead's Status below.
+          Acquired leads link to their Fresho account — automatically when the
+          name matches, by hand below when it doesn't — and pull ongoing orders
+          and &#163; sales from Fresho.</p>
         <div class="kpis" id="lead-kpis"></div>
         <div class="scroll" id="lead-ratings"></div>
         <div class="dirbar">
@@ -1486,6 +1490,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   if(!STATE.log) STATE.log = [];
   if(!STATE.contacts) STATE.contacts = [];
   if(!STATE.leadMatch) STATE.leadMatch = {};
+  if(!STATE.leadStatus) STATE.leadStatus = {};
   var openCards = {};
   var esc = function(s){ return String(s==null?'':s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -2235,8 +2240,13 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(Object.prototype.hasOwnProperty.call(STATE.leadMatch, l.sid)) return null;
     return l.sug || null;   // [code, score, how] — user dismissed = key present
   }
+  // Status set on this page wins until the weekly run folds it into the data
+  function effStatus(l){
+    return STATE.leadStatus[l.sid] || l.status || '';
+  }
   function leadIsStale(l){
-    if(l.status !== 'New' && l.status !== 'Contacted') return false;
+    var st = effStatus(l);
+    if(st !== 'New' && st !== 'Contacted') return false;
     if(!l.date) return false;
     var cut = new Date(DATA.asOf); cut.setDate(cut.getDate() - 21);
     return new Date(l.date) < cut;
@@ -2257,7 +2267,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     if(!host) return;
     var all = DATA.leads || [];
     var included = all.filter(function(l){ return !l.excl; });
-    var acq = included.filter(function(l){ return l.status === 'Acquired'; });
+    var acq = included.filter(function(l){ return effStatus(l) === 'Acquired'; });
     var matched = included.filter(function(l){ return effMatch(l); });
     var stale = included.filter(leadIsStale);
     var sugs = included.filter(sugFor);
@@ -2267,7 +2277,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
       + '</span><span class="l">commercial leads (' + (all.length - included.length)
       + ' excluded)</span></div>'
       + '<div class="kpi" style="cursor:default"><span class="n">' + acq.length
-      + '</span><span class="l">marked acquired in the sheet</span></div>'
+      + '</span><span class="l">marked acquired</span></div>'
       + '<div class="kpi" style="cursor:default"><span class="n">' + matched.length
       + (sugs.length ? ' <span class="muted" style="font-size:15px">+'
          + sugs.length + '?</span>' : '')
@@ -2285,7 +2295,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         var pool = included.filter(function(l){
           return band === null ? !l.rating : l.rating === band; });
         if(!pool.length) return;
-        var a = pool.filter(function(l){ return l.status === 'Acquired'; }).length;
+        var a = pool.filter(function(l){ return effStatus(l) === 'Acquired'; }).length;
         rows += '<tr><td>' + (band === null ? 'Unrated'
           : '★'.repeat(band)) + '</td><td class="num">' + pool.length
           + '</td><td class="num">' + a + '</td><td class="num">'
@@ -2297,7 +2307,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
     var sf = (document.getElementById('leadstatus') || {}).value || '';
     var showEx = !!(document.getElementById('leadexcl') || {}).checked;
     var list = all.filter(function(l){
-      return (showEx || !l.excl) && (!sf || l.status === sf);
+      return (showEx || !l.excl) && (!sf || effStatus(l) === sf);
     });
     host.innerHTML = list.map(function(l){
       var open = openLead === l.sid;
@@ -2307,7 +2317,7 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         + '" aria-expanded="' + (open ? 'true' : 'false')
         + '"><span class="chev">▶</span>'
         + '<span class="rname">' + esc(l.biz || l.name || l.email || '(no name)')
-        + '</span>' + stars(l.rating) + leadChip(l.status)
+        + '</span>' + stars(l.rating) + leadChip(effStatus(l))
         + (leadIsStale(l) ? '<span class="stale">STALE</span>' : '')
         + (l.excl ? '<span class="pill">' + esc(l.excl) + '</span>' : '')
         + '<span class="dmeta">' + esc(l.src) + (l.date ? ' · ' + esc(l.date) : '')
@@ -2319,7 +2329,16 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
           + (l.email ? '<span><a href="mailto:' + esc(l.email) + '">'
              + esc(l.email) + '</a></span>' : '')
           + (l.phone ? '<span>' + esc(l.phone) + '</span>' : '')
-          + (l.type ? '<span>' + esc(l.type) + '</span>' : '') + '</div>';
+          + (l.type ? '<span>' + esc(l.type) + '</span>' : '')
+          + (l.heard ? '<span>heard via <b>' + esc(l.heard) + '</b></span>' : '')
+          + '</div>'
+          + '<div class="acts"><label class="said">Status '
+          + '<select class="act" data-leadstatus="' + esc(l.sid) + '">'
+          + ['New', 'Contacted', 'Acquired', 'Discarded'].map(function(st){
+              return '<option' + (effStatus(l) === st ? ' selected' : '') + '>'
+                + st + '</option>'; }).join('')
+          + '</select></label>'
+          + '<span class="said" id="say-ls-' + esc(l.sid) + '"></span></div>';
         if(l.analysis) body += '<div class="dh">AI ANALYSIS</div>'
           + '<div class="draft">' + esc(l.analysis) + '</div>';
         if(l.notes) body += '<div class="dh">NOTES</div><p class="said">'
@@ -2424,19 +2443,19 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
         var sd = dirRow(sg[0]);
         if(sd) recs.push({p: 0, verb: 'Confirm', name: l.biz || l.name,
           why: 'looks like existing customer ' + sd.n + ' ('
-            + Math.round(sg[1] * 100) + '% ' + sg[2] + ') — sheet still says '
-            + (l.status || 'nothing'), sid: l.sid});
-      } else if(l.status === 'Acquired' && !m){
+            + Math.round(sg[1] * 100) + '% ' + sg[2] + ') — status is still '
+            + (effStatus(l) || 'blank'), sid: l.sid});
+      } else if(effStatus(l) === 'Acquired' && !m){
         recs.push({p: 1, verb: 'Link', name: l.biz || l.name,
           why: 'marked acquired but not linked to any Fresho account yet',
           sid: l.sid});
-      } else if(l.status === 'New' && (l.rating || 0) >= 4){
+      } else if(effStatus(l) === 'New' && (l.rating || 0) >= 4){
         recs.push({p: 2, verb: 'Contact', name: l.biz || l.name,
           why: '★'.repeat(l.rating) + ' new lead from ' + (l.src || 'unknown')
             + (l.date ? ', ' + l.date : ''), sid: l.sid});
       } else if(leadIsStale(l)){
         recs.push({p: 3, verb: 'Chase', name: l.biz || l.name,
-          why: (l.status || '') + ' since ' + (l.date || '?')
+          why: effStatus(l) + ' since ' + (l.date || '?')
             + ' with no movement', sid: l.sid});
       }
     });
@@ -2644,6 +2663,13 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   document.addEventListener('change', function(ev){
     var sel = ev.target.closest && ev.target.closest('[data-assign]');
     if(sel) assign(sel.getAttribute('data-assign'), sel.value);
+    var lst = ev.target.closest && ev.target.closest('[data-leadstatus]');
+    if(lst){
+      var ssid = lst.getAttribute('data-leadstatus');
+      STATE.leadStatus[ssid] = lst.value;
+      renderLeads(); renderLeadRecs();
+      scheduleSave(ssid, 'ls');
+    }
   });
 
   var dq = document.getElementById('dirq');
