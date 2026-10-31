@@ -367,7 +367,18 @@ biggest segment whitespace. Then let each chart carry its own play.
   with Claude + web search (same write-up sections and 1-5 rating the n8n flow
   produced), and emails the sales team via Resend (`LEAD_NOTIFY_TO`; test/internal leads
   go to `LEAD_NOTIFY_INTERNAL_TO` only). `python leads.py retry` finishes any
-  web lead whose write-up or email failed. Each lead has its own page
+  web lead whose write-up or email failed. Research follows a fixed playbook
+  (identify → website → Companies House → reviews → news → suppliers, 10
+  searches, junk directories blocked, every fact source-tagged) and ends in a
+  VERDICT decided in code: must-haves first (postcode district Rushton's
+  serves — derived from customers.delivery_address; London districts not yet
+  served pass with a "check" note; trade buyer; still trading) → Reject;
+  existing customer → "Pass to rep" (owner = that rep); else value score
+  1-5 → Pursue with urgency (value 3+ and a time signal) / Pursue / Nurture.
+  Rejects email the team flagged REJECT and wait in Follow-ups "AI rejected —
+  check" (Confirm Lost / Pursue anyway); the AI never closes a lead. Dry-run
+  test mode: POST {"action":"analyse",...} with apikey = function_settings
+  dryrun_key. Each lead has its own page
   (`#lead/<source_id>`): stage stepper (funnel New → Contacted → Qualified →
   Sample/trial → Won, or Lost with a reason — config.LEAD_STAGES), next
   follow-up (hand-set date, else config.LEAD_FOLLOW_UP_DAYS after the last

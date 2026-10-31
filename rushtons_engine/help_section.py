@@ -139,8 +139,26 @@ alarm codes) and customer contact details, which arrive with the logged-in
 version of the dashboard.</li>
 </ul>"""),
         item("Leads: stages, follow-ups and who did what", f"""
-<p>Website enquiries land in <b>Leads</b> within seconds, with an AI write-up
-and a 1&#8211;5 rating; the sales team gets the same by email.</p>
+<p>Website enquiries land in <b>Leads</b> within seconds. The AI researches
+each one in a fixed order (website, Companies House, reviews, news, current
+suppliers), tags every fact with its source, and gives a <b>verdict</b>; the
+sales team gets the same by email.</p>
+<ul>
+<li><b>Must-haves first.</b> A lead outside the postcode districts Rushton's
+delivers to, not a trade buyer (a consumer, a supplier selling to us, an agency
+or spam) or no longer trading is <b>AI: reject</b>. It waits under Follow-ups
+&#8594; &#8220;AI rejected &#8212; check&#8221; for someone to tap Confirm Lost or
+Pursue anyway; the AI never closes a lead itself. A London district we don't
+deliver to yet passes with a &#8220;check&#8221; note.</li>
+<li><b>Already a customer?</b> &#8220;Pass to rep&#8221;, owned by that account's rep.</li>
+<li><b>Everyone else</b> gets a value score (scale, quality, how much fresh
+produce the menu uses, how sure the AI is who they are) and a verdict:
+<b>URGENT</b> (worth pursuing and something time-sensitive, e.g. opening soon,
+new head chef, a referral) &#8212; follow up the same day; <b>Pursue</b> &#8212;
+the next day; <b>Nurture</b> (small or unclear) &#8212; within a week.</li>
+<li>Change a verdict on the lead's page if you know better; the change is
+recorded with your name.</li>
+</ul>
 <ul>
 <li><b>Stages</b>: {e(' &#8594; '.join(lbl for key, lbl in config.LEAD_STAGES if key != 'Discarded'))},
 or <b>Lost</b> (with a reason). Move a lead on its page; logging a call, email,

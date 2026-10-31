@@ -354,3 +354,9 @@ LEAD_LOST_REASONS = ["Not a fit", "No response", "Price",
 # everyone with customer accounts in Fresho (customers.sales_rep, read each
 # build), minus these Fresho placeholders that aren't people.
 LEAD_TEAM_NOT_PEOPLE = {"Market Customer", "Customer Service"}
+# AI research verdicts (set by the lead-intake Edge Function; the team can
+# override on the lead page). A New lead's first follow-up is due this many
+# days after it arrives; Reject has none (it waits in "AI rejected - check").
+LEAD_VERDICTS = ["Pursue with urgency", "Pursue", "Nurture", "Pass to rep", "Reject"]
+LEAD_VERDICT_DUE_DAYS = {"Pursue with urgency": 0, "Pursue": 1, "Nurture": 7,
+                         "Pass to rep": 1}

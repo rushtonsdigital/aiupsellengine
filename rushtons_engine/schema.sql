@@ -276,7 +276,14 @@ create table if not exists leads (
   status_changed_at timestamptz,        -- last Status change on the dashboard
   owner         text,                   -- who is working the lead
   next_follow_up date,                  -- set by hand; null = stage rule
-  lost_reason   text                    -- when status = Discarded (Lost)
+  lost_reason   text,                   -- when status = Discarded (Lost)
+  verdict       text,                   -- Reject|Nurture|Pursue|Pursue with urgency|Pass to rep
+  verdict_reason text,
+  verdict_source text,                  -- ai | team (override on the dashboard)
+  urgency       text,                   -- urgency signals, "; "-joined
+  postcode      text,
+  website       text,
+  research      text                    -- the AI's structured fields (JSON)
 );
 
 -- Everything the team does to a lead (stage moves, calls, notes, follow-up
@@ -286,7 +293,7 @@ create table if not exists lead_activities (
   event_id      text unique not null,
   source_id     text not null,          -- leads.source_id (no FK: sheet reloads)
   occurred_at   timestamptz not null,
-  kind          text not null,          -- stage|note|call|email|whatsapp|visit|sample|follow_up|owner
+  kind          text not null,          -- stage|note|call|email|whatsapp|visit|sample|follow_up|owner|verdict
   stage         text,
   note          text,
   follow_up_on  date,

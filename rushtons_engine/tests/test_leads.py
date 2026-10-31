@@ -154,3 +154,17 @@ def test_migrate_adds_intake_columns_to_an_old_leads_table(tmp_path):
     with eng.connect() as c:
         assert c.execute(sa.text("select intake from leads")).scalar() == "sheet"
     db._migrate_leads(eng)          # idempotent
+
+
+def test_team_can_override_the_ai_verdict(conn, tmp_path):
+    f = _write(tmp_path,
+        '101,Ana,The Green Fork,ana@greenfork.co.uk,07700 1,Contact Page Form,'
+        ',,"May 8, 2026",New,4,Restaurant,\n')
+    leads.load_csv(conn, f)
+    conn.execute(db.leads.update().values(verdict="Reject", verdict_source="ai"))
+    assert leads.apply_activity_log(conn, [
+        _ev(1, "verdict", "2026-10-31T09:00:00Z", note="Pursue"),
+        _ev(2, "verdict", "2026-10-31T09:01:00Z", note="Maybe"),   # not a verdict
+    ]) == 1
+    row = _rows(conn)[0]
+    assert row["verdict"] == "Pursue" and row["verdict_source"] == "team"
