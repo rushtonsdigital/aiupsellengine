@@ -1600,6 +1600,7 @@ input[type="date"].act { cursor:text; }
           gets the same write-up by email). Open a lead to move it through the
           funnel, log calls and notes, and set the next follow-up. Won leads
           link to their Fresho account and pull orders and &#163; sales.</p>
+        <div class="lbox" id="lead-missing" hidden></div>
         <div class="kpis" id="lead-kpis"></div>
         <div class="dh">FUNNEL &#8212; HOW FAR LEADS GET (commercial leads, excluding test/personal)</div>
         <div id="lead-funnel"></div>
@@ -1762,6 +1763,8 @@ input[type="date"].act { cursor:text; }
   function showTab(name){
     if(TABS.indexOf(name) < 0) name = 'actions';
     curAcct = null; curLead = null;
+    var lm = document.getElementById('lead-missing');
+    if(lm) lm.hidden = true;
     hidePages();
     TABS.forEach(function(t){
       var s = document.getElementById('sec-' + t);
@@ -1799,7 +1802,18 @@ input[type="date"].act { cursor:text; }
     window.scrollTo(0, 0);
   }
   function showLead(sid){
-    if(!leadBySid(sid)){ showTab('leads'); return; }
+    if(!leadBySid(sid)){
+      showTab('leads');
+      // a link from a lead email can arrive before the next dashboard refresh
+      var lm = document.getElementById('lead-missing');
+      if(lm){
+        lm.textContent = 'That lead isn’t on the dashboard yet — it arrived'
+          + ' after the last refresh. The email has its full research; it will'
+          + ' appear here, with its page, at the next refresh.';
+        lm.hidden = false;
+      }
+      return;
+    }
     curAcct = null; curLead = sid; openLostFor = null;
     hidePages();
     TABS.forEach(function(t){
@@ -1824,6 +1838,13 @@ input[type="date"].act { cursor:text; }
     }
     if(h.indexOf('lead/') === 0){
       showLead(decodeURIComponent(h.slice(5)));
+      return;
+    }
+    // Email links use #lead-<id>: claude.ai only passes a plain fragment
+    // (no "/" or "|") through to the page. Web lead ids are "w|<id>".
+    if(h.indexOf('lead-') === 0){
+      var lid = h.slice(5);
+      showLead(leadBySid('w|' + lid) ? 'w|' + lid : lid);
       return;
     }
     showTab(h || 'actions');
@@ -2878,7 +2899,7 @@ input[type="date"].act { cursor:text; }
       h += '<div class="lbox"><div class="dh">AI VERDICT'
         + (v.vsrc === 'team' ? ' (changed by the team)' : '') + '</div>'
         + '<div>' + verdictChip(v.verdict) + ' <span class="said">'
-        + (v.vsrc === 'team' ? 'Set by the team.' + (l.vwhy ? ' The AI's note: '
+        + (v.vsrc === 'team' ? 'Set by the team.' + (l.vwhy ? ' The AI’s note: '
            + esc(l.vwhy) : '') : esc(l.vwhy)) + '</span></div>'
         + (l.urg ? '<p class="said" style="margin:.3rem 0 0">Urgency: '
            + esc(l.urg) + '</p>' : '')

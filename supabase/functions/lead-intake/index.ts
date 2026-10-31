@@ -521,6 +521,10 @@ async function notify(lead: Lead): Promise<boolean> {
     + (lead.rating && lead.verdict !== "Reject" ? ` — ${lead.rating}/5` : "")
     + (lead.type ? ` (${lead.type})` : "");
   const dash = Deno.env.get("DASHBOARD_URL") || "";
+  // Deep link to this lead's page. claude.ai only hands a plain fragment
+  // (no "/" or "|") to the page, so "w|<id>" travels as "#lead-<id>".
+  const leadLink = dash
+    ? `${dash.replace(/#.*$/, "")}#lead-${lead.source_id.replace(/^w\|/, "")}` : "";
   const facts: [string, string][] = [
     ["Business", lead.business], ["Contact", lead.name],
     ["Email", lead.email], ["Phone", lead.phone],
@@ -534,7 +538,8 @@ async function notify(lead: Lead): Promise<boolean> {
     || "AI research didn't finish for this lead — it will be retried; "
       + "follow up from the details above.";
   const text = facts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
-    .join("\n") + `\n\n${analysis}\n` + (dash ? `\nDashboard: ${dash}\n` : "");
+    .join("\n") + (leadLink ? `\n\nOpen the lead page: ${leadLink}` : "")
+    + `\n\n${analysis}\n`;
   const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
 <h2 style="margin:0 0 8px">${esc(who)} <span style="color:#c98500">${esc(stars)}</span></h2>
 ${lead.verdict ? `<p style="margin:0 0 10px;padding:8px 12px;border-radius:6px;font-weight:bold;background:${
@@ -545,8 +550,10 @@ ${lead.verdict ? `<p style="margin:0 0 10px;padding:8px 12px;border-radius:6px;f
     `<tr><td style="color:#777">${esc(k)}</td><td>${
       k === "Email" ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : esc(v)}</td></tr>`)
     .join("")}</table>
+${leadLink ? `<p style="margin:12px 0"><a href="${esc(leadLink)}" style="display:inline-block;background:#007946;color:#fff;text-decoration:none;font-weight:bold;padding:10px 16px;border-radius:6px">Open the lead page &rarr;</a>
+<br><span style="color:#777;font-size:12px">Change the verdict, set the stage, log calls and notes there.</span></p>` : ""}
 <pre style="white-space:pre-wrap;font-family:inherit;background:#f6f6f4;padding:12px;border-radius:6px">${esc(analysis)}</pre>
-${dash ? `<p><a href="${esc(dash)}">Open the commercial dashboard</a></p>` : ""}
+${leadLink ? `<p><a href="${esc(leadLink)}">Open the lead page on the dashboard</a></p>` : ""}
 </div>`;
   // Resend REST API (https://resend.com/docs/api-reference/emails/send-email)
   const resp = await fetch("https://api.resend.com/emails", {
