@@ -34,13 +34,14 @@ The `lead-intake` Edge Function is deployed but the forms still post to n8n. To 
 1. **Jose** — Supabase → Edge Functions → lead-intake → Settings: switch OFF "Verify JWT
    with legacy secret" (Claude was blocked from changing it). Must happen BEFORE step 4, or
    every form submission fails and visitors see an error.
-2. **Jose** — Resend (resend.com): sign up, add domain `rushtonsgreengrocer.co.uk` (EU), add
+2. **Jose** — Resend (resend.com): sign up, add the sending domain (EU) — Jose's choice, a GoodBytes domain is fine since the
+   emails only go to the Rushton's team, never to customers — add
    its DNS records in Cloudflare (Resend's Cloudflare button, or Claude can do it in Chrome on
    a yes), create a sending API key. The same Resend account later sends the dashboard
    login emails (Supabase Auth → SMTP: host `smtp.resend.com`, user `resend`, password = a
    Resend key).
 3. **Jose** — Supabase → Edge Functions → Secrets: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`,
-   `LEAD_NOTIFY_FROM` = `Rushton's leads <leads@rushtonsgreengrocer.co.uk>`,
+   `LEAD_NOTIFY_FROM` = `Rushton's leads <leads@<that domain>>`,
    `LEAD_NOTIFY_TO` (suggested: `laurence@rushtonsgreengrocer.co.uk, goodbytesnetwork@gmail.com`),
    `LEAD_NOTIFY_INTERNAL_TO` = `goodbytesnetwork@gmail.com`,
    `DASHBOARD_URL` = `https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW`.
