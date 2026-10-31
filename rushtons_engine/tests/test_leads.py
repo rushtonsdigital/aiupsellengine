@@ -92,22 +92,53 @@ def test_manual_match_and_clear(conn, tmp_path):
     assert leads.apply_manual_matches(conn, {"s|401": "NOPE"}) == 0
 
 
-def test_dashboard_status_changes_apply_and_survive_a_sheet_reload(conn, tmp_path):
+def _ev(i, kind, at, **kw):
+    return dict(id=f"ll|{i}", sid="s|101", kind=kind, at=at, actor="Laurence", **kw)
+
+
+def test_activity_log_moves_the_lead_and_survives_a_sheet_reload(conn, tmp_path):
     f = _write(tmp_path,
         '101,Ana,The Green Fork,ana@greenfork.co.uk,07700 1,Contact Page Form,'
         ',,"May 8, 2026",New,4,Restaurant,\n')
     leads.load_csv(conn, f)
-    assert leads.apply_status_changes(
-        conn, {"s|101": "Contacted", "s|999": "Acquired", "s|101x": "Bogus"}) == 1
+    events = [
+        _ev(3, "follow_up", "2026-10-21T09:00:00Z", due="2026-10-24"),
+        _ev(1, "call", "2026-10-20T09:00:00Z", note="spoke to chef"),
+        _ev(2, "stage", "2026-10-20T09:01:00Z", stage="Contacted"),
+        _ev(4, "owner", "2026-10-21T10:00:00Z", owner="Laurence"),
+        _ev(5, "stage", "2026-10-21T11:00:00Z", stage="Bogus"),     # skipped
+        dict(id="ll|6", sid="s|999", kind="note", at="2026-10-21T11:00:00Z"),
+    ]
+    assert leads.apply_activity_log(conn, events) == 4
     row = _rows(conn)[0]
     assert row["status"] == "Contacted"
-    assert row["status_changed_at"] is not None
-    assert row["intake"] == "sheet"
-    # same status again is a no-op
-    assert leads.apply_status_changes(conn, {"s|101": "Contacted"}) == 0
-    # the legacy sheet (still saying New) must not undo the dashboard's change
+    assert row["owner"] == "Laurence"
+    assert row["next_follow_up"] == dt.date(2026, 10, 24)
+    acts = conn.execute(sa.select(db.lead_activities)
+                        .order_by(db.lead_activities.c.occurred_at)).mappings().all()
+    assert [a["kind"] for a in acts] == ["call", "stage", "follow_up", "owner"]
+    assert acts[0]["note"] == "spoke to chef" and acts[0]["actor"] == "Laurence"
+    # harvesting the same state again changes nothing
+    assert leads.apply_activity_log(conn, events) == 0
+    # the legacy sheet (still saying New) must not undo the dashboard's stage
     leads.load_csv(conn, f)
     assert _rows(conn)[0]["status"] == "Contacted"
+
+
+def test_lost_records_reason_and_a_stage_move_clears_the_follow_up(conn, tmp_path):
+    f = _write(tmp_path,
+        '101,Ana,The Green Fork,ana@greenfork.co.uk,07700 1,Contact Page Form,'
+        ',,"May 8, 2026",New,4,Restaurant,\n')
+    leads.load_csv(conn, f)
+    leads.apply_activity_log(conn, [
+        _ev(1, "note", "2026-10-20T09:00:00Z", note="call back", due="2026-10-30"),
+        _ev(2, "stage", "2026-10-22T09:00:00Z", stage="Discarded",
+            reason="Outside delivery area"),
+    ])
+    row = _rows(conn)[0]
+    assert row["status"] == "Discarded"
+    assert row["lost_reason"] == "Outside delivery area"
+    assert row["next_follow_up"] is None
 
 
 def test_migrate_adds_intake_columns_to_an_old_leads_table(tmp_path):

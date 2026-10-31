@@ -326,3 +326,31 @@ CUSTOMERS_FILE_GLOB = "*customers_*.csv"
 # Fresho Sell > Reports > "Sales Totals and Gross Profit Margin", CSV, one
 # calendar month (or month to date) per file.
 VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
+
+# --- leads pipeline (dashboard Leads + Follow-ups) -----------------------------
+# Funnel stages in order: (stored value, label on the page). Acquired/Discarded
+# keep the legacy sheet's words so old rows need no rewrite; the page says
+# Won/Lost.
+LEAD_STAGES = [
+    ("New", "New"),
+    ("Contacted", "Contacted"),
+    ("Qualified", "Qualified"),
+    ("Trial", "Sample / trial"),
+    ("Acquired", "Won"),
+    ("Discarded", "Lost"),
+]
+# Follow-up reminders: a lead in this stage is due this many days after its
+# last touch (stage change, call, email, note...). A date set by hand wins.
+# New = respond within a day; Contacted = chase after 4; Qualified = keep
+# warm weekly; Sample/trial = ask for feedback 3 days after the box.
+LEAD_FOLLOW_UP_DAYS = {"New": 1, "Contacted": 4, "Qualified": 7, "Trial": 3}
+# Open leads untouched this long drop out of "overdue" into "gone quiet"
+# (mostly the legacy sheet's leftovers): revive them or mark them Lost.
+LEAD_QUIET_DAYS = 60
+LEAD_LOST_REASONS = ["Not a fit", "No response", "Price",
+                     "Chose another supplier", "Outside delivery area",
+                     "Personal / not trade", "Duplicate", "Other"]
+# Who can own and work leads (also the "who are you" picker until logins):
+# everyone with customer accounts in Fresho (customers.sales_rep, read each
+# build), minus these Fresho placeholders that aren't people.
+LEAD_TEAM_NOT_PEOPLE = {"Market Customer", "Customer Service"}

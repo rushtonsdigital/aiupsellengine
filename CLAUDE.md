@@ -202,8 +202,11 @@ layer** for BI reports and ad-hoc data questions:
   response. Redeploy by pasting the file into Supabase > Edge Functions > lead-intake > Code
   (JWT verification stays OFF — Elementor can't send a key). Config lives in Edge Function
   Secrets (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `LEAD_NOTIFY_FROM`, `LEAD_NOTIFY_TO`,
-  `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). Status is edited on the dashboard and harvested
-  weekly; `python leads.py retry` finishes leads whose AI/email step failed.
+  `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). `python leads.py retry` finishes leads whose
+  AI/email step failed. The team works leads on the dashboard (lead pages, funnel, Follow-ups):
+  stages, rules and team live in `config.LEAD_*`; actions are harvested weekly into
+  `lead_activities` (`leads.apply_activity_log`) — the same event shape the logged-in app
+  will write live.
 - Performance note: the summary tables answer in ~100ms and the whole dashboard
   builds in ~1s. `v_order_lines` scans all order lines (~9s) — use it for
   drill-down only, never for aggregates.

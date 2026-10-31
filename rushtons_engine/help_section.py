@@ -138,6 +138,27 @@ handling directly. These still appear in the other sections.</li>
 alarm codes) and customer contact details, which arrive with the logged-in
 version of the dashboard.</li>
 </ul>"""),
+        item("Leads: stages, follow-ups and who did what", f"""
+<p>Website enquiries land in <b>Leads</b> within seconds, with an AI write-up
+and a 1&#8211;5 rating; the sales team gets the same by email.</p>
+<ul>
+<li><b>Stages</b>: {e(' &#8594; '.join(lbl for key, lbl in config.LEAD_STAGES if key != 'Discarded'))},
+or <b>Lost</b> (with a reason). Move a lead on its page; logging a call, email,
+WhatsApp or visit on a New lead moves it to Contacted, and &#8220;Sample sent&#8221;
+moves it to Sample / trial.</li>
+<li><b>Follow-ups</b>: an open lead is due {config.LEAD_FOLLOW_UP_DAYS['New']} day after
+it arrives, {config.LEAD_FOLLOW_UP_DAYS['Contacted']} days after the last contact,
+{config.LEAD_FOLLOW_UP_DAYS['Qualified']} days once qualified and
+{config.LEAD_FOLLOW_UP_DAYS['Trial']} days after a sample &#8212; unless someone sets a
+date by hand. Leads untouched for {config.LEAD_QUIET_DAYS}+ days are listed as
+&#8220;gone quiet&#8221;: revive them or mark them Lost.</li>
+<li><b>The funnel</b> counts how far each lead got, so a lead that was qualified
+and then lost still counts at Qualified.</li>
+<li><b>Real conversion</b> is leads linked to an actual Fresho account, not just
+marked Won.</li>
+<li>Choose your name in <b>&#8220;You are&#8221;</b> once per device: every stage
+change, note and call you log carries it. (Logins will replace this.)</li>
+</ul>"""),
         item("Something looks wrong?", """
 <p>Venue type, account manager and group all come from the customer's tags in
 Fresho &#8212; &#8220;Unknown&#8221; means the tag is missing. Fix it in Fresho

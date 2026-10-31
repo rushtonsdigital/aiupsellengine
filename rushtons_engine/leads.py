@@ -4,8 +4,10 @@ Source of truth (from 2026-10-25): the website forms post straight to the
 lead-intake Supabase Edge Function (supabase/functions/lead-intake), which
 saves the lead, researches and rates it with Claude, and emails the sales
 team. n8n and the Google Sheet are retired. Status (New / Contacted /
-Acquired / Discarded) is set on the dashboard and harvested back here
-(apply_status_changes). Every submission also stays in WordPress
+Acquired / Discarded, shown as the funnel New -> Contacted -> Qualified ->
+Sample/trial -> Won, plus Lost) and every call, note, follow-up date and
+owner change are recorded on the dashboard and harvested back here
+(apply_activity_log -> lead_activities). Every submission also stays in WordPress
 (Elementor > Submissions) as the backstop.
 
 The sheet loader below is kept only for the one-off import of the legacy
@@ -33,7 +35,7 @@ import argparse
 import hashlib
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -41,6 +43,7 @@ import csv
 
 import sqlalchemy as sa
 
+import config
 import db
 
 log = logging.getLogger(__name__)
@@ -239,26 +242,84 @@ def apply_manual_matches(conn, mapping: dict) -> int:
     return n
 
 
-LEAD_STATUSES = ("New", "Contacted", "Acquired", "Discarded")
+LEAD_STATUSES = tuple(key for key, _ in config.LEAD_STAGES)
+CONTACT_KINDS = ("call", "email", "whatsapp", "visit", "sample")
+ACTIVITY_KINDS = ("stage", "note", "follow_up", "owner") + CONTACT_KINDS
 
 
-def apply_status_changes(conn, mapping: dict) -> int:
-    """Dashboard Status changes: {source_id: status}. The dashboard is where
-    Status lives now the sheet is retired; unknown values are skipped."""
+def _parse_at(value):
+    try:
+        at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _parse_day(value):
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def apply_activity_log(conn, events: list, source: str = "dashboard") -> int:
+    """Lead activity from the dashboard (state.leadLog) -> lead_activities,
+    then its effect on the lead. Idempotent by event id, applied oldest first.
+
+    Event: {id, sid, kind, at, actor, note?, stage?, reason?, due?, owner?}
+      stage      status = stage; lost_reason = reason when Lost; a stage move
+                 clears the hand-set follow-up unless the event carries `due`
+      follow_up  next_follow_up = due ('' clears it -> back to the stage rule)
+      owner      owner = owner ('' = unassigned)
+      call/email/whatsapp/visit/sample/note: logged; `due` sets a follow-up
+    """
+    known = {r.source_id for r in conn.execute(sa.select(db.leads.c.source_id))}
+    ids = [e.get("id") for e in events if e.get("id")]
+    seen = {r.event_id for r in conn.execute(
+        sa.select(db.lead_activities.c.event_id)
+        .where(db.lead_activities.c.event_id.in_(ids)))} if ids else set()
     n = 0
-    for sid, status in mapping.items():
-        if status not in LEAD_STATUSES:
-            log.warning("lead %s: unknown status %r skipped", sid, status)
+    for ev in sorted(events, key=lambda e: str(e.get("at") or "")):
+        eid, sid, kind = ev.get("id"), ev.get("sid"), ev.get("kind")
+        at = _parse_at(ev.get("at"))
+        if not eid or eid in seen:
             continue
-        res = conn.execute(db.leads.update()
-                           .where(db.leads.c.source_id == sid)
-                           .where(sa.or_(db.leads.c.status.is_(None),
-                                         db.leads.c.status != status))
-                           .values(status=status, status_changed_at=db.now_utc(),
-                                   updated_at=db.now_utc()))
-        n += res.rowcount
+        if sid not in known or kind not in ACTIVITY_KINDS or at is None:
+            log.warning("lead event %r skipped (lead %r, kind %r)", eid, sid, kind)
+            continue
+        stage = ev.get("stage") if kind == "stage" else None
+        if kind == "stage" and stage not in LEAD_STATUSES:
+            log.warning("lead event %r: unknown stage %r skipped", eid, stage)
+            continue
+        due = _parse_day(ev["due"]) if ev.get("due") else None
+        note = (ev.get("note") or "").strip()
+        if kind == "stage" and stage == "Discarded":
+            note = (ev.get("reason") or note).strip()
+        if kind == "owner":
+            note = (ev.get("owner") or "").strip()
+        conn.execute(db.lead_activities.insert().values(
+            event_id=eid, source_id=sid, occurred_at=at, kind=kind,
+            stage=stage, note=note[:1000] or None, follow_up_on=due,
+            actor=(ev.get("actor") or "")[:100] or None, source=source))
+        seen.add(eid)
+        n += 1
+
+        values = {"updated_at": db.now_utc()}
+        if kind == "stage":
+            values.update(status=stage, status_changed_at=at,
+                          lost_reason=note or None if stage == "Discarded" else None,
+                          next_follow_up=due)
+        elif kind == "follow_up":
+            values["next_follow_up"] = due
+        elif kind == "owner":
+            values["owner"] = note or None
+        elif due:
+            values["next_follow_up"] = due
+        conn.execute(db.leads.update().where(db.leads.c.source_id == sid)
+                     .values(**values))
     if n:
-        log.info("applied %d lead status change(s) from the dashboard", n)
+        log.info("applied %d lead activit%s from the %s", n,
+                 "y" if n == 1 else "ies", source)
     return n
 
 

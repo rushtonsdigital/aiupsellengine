@@ -273,5 +273,25 @@ create table if not exists leads (
   heard_about   text,                   -- "How did you hear about Rushton's?"
   analysed_at   timestamptz,            -- AI research finished
   notified_at   timestamptz,            -- sales-team email sent
-  status_changed_at timestamptz         -- last Status change on the dashboard
+  status_changed_at timestamptz,        -- last Status change on the dashboard
+  owner         text,                   -- who is working the lead
+  next_follow_up date,                  -- set by hand; null = stage rule
+  lost_reason   text                    -- when status = Discarded (Lost)
 );
+
+-- Everything the team does to a lead (stage moves, calls, notes, follow-up
+-- dates, owner changes); idempotent by event_id. leads.apply_activity_log.
+create table if not exists lead_activities (
+  id            bigserial primary key,
+  event_id      text unique not null,
+  source_id     text not null,          -- leads.source_id (no FK: sheet reloads)
+  occurred_at   timestamptz not null,
+  kind          text not null,          -- stage|note|call|email|whatsapp|visit|sample|follow_up|owner
+  stage         text,
+  note          text,
+  follow_up_on  date,
+  actor         text,
+  source        text                    -- dashboard | app
+);
+create index if not exists idx_lead_activities_lead
+  on lead_activities (source_id, occurred_at);

@@ -290,9 +290,9 @@ def main():
             harvest_state(conn, state)
             harvest_contacts(conn, state)
             leads_mod.apply_manual_matches(conn, state.get("leadMatch", {}))
-            leads_mod.apply_status_changes(conn, state.get("leadStatus", {}))
+            leads_mod.apply_activity_log(conn, state.get("leadLog", []))
             cleaned = dict(state, log=[], contacts=[], leadMatch={},
-                           leadStatus={})
+                           leadLog=[])
             out = args.state.with_suffix(".harvested.json")
             out.write_text(json.dumps(cleaned), encoding="utf-8")
             print(f"harvested; rebuild the dashboard with state from {out}")

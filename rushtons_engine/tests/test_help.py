@@ -14,4 +14,4 @@ def test_help_uses_live_config(monkeypatch):
     assert "<b>17 accounts</b>" in html and "9 weeks" in html
     assert "July 2026 to September 2026" in html      # last 3 complete months
     assert "2 June 2026" in html
-    assert html.count("<details") == 8
+    assert html.count("<details") == 9
