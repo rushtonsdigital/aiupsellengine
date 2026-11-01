@@ -205,11 +205,13 @@ layer** for BI reports and ad-hoc data questions:
   `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). `python leads.py retry` finishes leads whose
   AI/email step failed.
 - **Leads app** (`leads_app/`, static, hosted on Cloudflare Pages from `main`): the team's live
-  leads CRM — lead pages, funnel, Follow-ups. Reads Supabase directly (anon key + sign-in by
-  emailed link; Realtime pushes new leads in) and writes only through the functions in
+  leads CRM — lead pages, funnel, Follow-ups. Reads Supabase directly (anon key + email and
+  password sign-in; Realtime pushes new leads in) and writes only through the functions in
   `rushtons_engine/leads_app.sql` (applied every `init_db`), which credit each action to the
   signed-in person. Only `public.app_users` can sign in — `python leads.py adduser <email>
-  "<Name>"`. `leads_app/config.js` is generated: `python leads.py appconfig` after changing
+  "<Name>"`, then Jose creates the login in Supabase > Authentication > Users > Add user
+  (auto-confirm, temporary password he gives them; they change it in the app). Forgotten
+  passwords: Jose resets them there — Claude never handles passwords. `leads_app/config.js` is generated: `python leads.py appconfig` after changing
   any `config.LEAD_*` (a test fails if it's stale). Stages, rules and team live in
   `config.LEAD_*`; the dashboard's old leadLog harvest (`leads.apply_activity_log`) stays
   for state saved before the move.

@@ -12,13 +12,16 @@
 
   <div id="signin" class="play signin" hidden>
     <h2>Sign in</h2>
-    <p class="lede">Enter your work email and we'll email you a sign-in link.
-      Only the Rushton's team can sign in.</p>
-    <form id="signform" class="dirbar">
-      <input class="act noteinput" id="signemail" type="email" required
-        autocomplete="email" placeholder="you@rushtonsgreengrocer.co.uk"
-        aria-label="Your work email">
-      <button class="act" id="signbtn" type="submit">Email me a sign-in link</button>
+    <p class="lede">Only the Rushton's team can sign in. Forgotten your
+      password? Ask Jose to reset it.</p>
+    <form id="signform" class="signfields">
+      <label class="said">Work email
+        <input class="act noteinput" id="signemail" type="email" required
+          autocomplete="username" placeholder="you@rushtonsgreengrocer.co.uk"></label>
+      <label class="said">Password
+        <input class="act noteinput" id="signpass" type="password" required
+          autocomplete="current-password"></label>
+      <button class="act" id="signbtn" type="submit">Sign in</button>
     </form>
     <p class="said" id="signmsg" role="status"></p>
   </div>
@@ -26,7 +29,19 @@
   <div id="app" hidden>
   <p class="sub">Live from the website forms &#183; <span id="livestamp">loading&#8230;</span>
     &#183; signed in as <span id="who"></span>
+    &#183; <button class="bk" id="pwopen" type="button">Change password</button>
     &#183; <button class="bk" id="signout" type="button">Sign out</button></p>
+  <form id="pwform" class="lbox signfields" hidden>
+    <label class="said">New password (at least 10 characters)
+      <input class="act noteinput" id="pwnew" type="password" minlength="10" required
+        autocomplete="new-password"></label>
+    <label class="said">Type it again
+      <input class="act noteinput" id="pwnew2" type="password" minlength="10" required
+        autocomplete="new-password"></label>
+    <div class="acts"><button class="act" type="submit">Save new password</button>
+      <button class="act mini" id="pwcancel" type="button">Cancel</button></div>
+    <p class="said" id="pwmsg" role="status"></p>
+  </form>
 
   <div class="layout">
     <div class="mbar">

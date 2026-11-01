@@ -1,7 +1,7 @@
 // Rushton's leads app — the team's live leads CRM.
 //
-// Reads leads straight from Supabase (signed in with an emailed link; only
-// people in public.app_users can sign in or see anything) and saves every
+// Reads leads straight from Supabase (email + password sign-in; only people
+// in public.app_users can sign in or see anything) and saves every
 // action through the database functions in rushtons_engine/leads_app.sql,
 // which credit it to the signed-in person. Realtime pushes new leads and
 // colleagues' changes in as they happen. The lead logic below began as the
@@ -10,8 +10,7 @@
   'use strict';
   var C = window.LEADS_CONFIG;
   var sb = window.supabase.createClient(C.supabaseUrl, C.anonKey, {
-    auth: {persistSession: true, autoRefreshToken: true, detectSessionInUrl: true,
-      flowType: 'implicit'}});
+    auth: {persistSession: true, autoRefreshToken: true, detectSessionInUrl: false}});
   var DATA = {leads: [], directory: [], leadTeam: [],
     leadStages: C.stages, leadFollowUp: C.followUpDays, leadQuietDays: C.quietDays,
     leadLost: C.lostReasons, leadVerdicts: C.verdicts, leadVerdictDue: C.verdictDueDays};
@@ -794,7 +793,6 @@
   var pendingRoute = null;
   function route(){
     var h = location.hash.slice(1);
-    if(/access_token|error_description/.test(h)) return;
     if(!loadedAt && /^lead[\/-]/.test(h)){ pendingRoute = h; return; }
     go(h);
   }
@@ -906,40 +904,56 @@
   window.addEventListener('hashchange', route);
 
   // ---------------------------------------------------------------- sign-in
-  var NEXT_KEY = 'rushtons.leads.next';
+  // Email + password. Accounts are created by Jose in Supabase (Authentication
+  // > Users), and only for people in public.app_users; the lead an email link
+  // pointed at stays in the address bar, so it opens straight after sign-in.
   function signedOut(msg){
     document.getElementById('app').hidden = true;
     document.getElementById('signin').hidden = false;
     document.getElementById('signmsg').textContent = msg || '';
-    // remember the lead an email link pointed at, for after sign-in
-    var h = location.hash.slice(1);
-    if(/^lead[\/-]/.test(h)){ try { localStorage.setItem(NEXT_KEY, h); } catch(err){} }
   }
   document.getElementById('signform').addEventListener('submit', function(ev){
     ev.preventDefault();
     var email = document.getElementById('signemail').value.trim().toLowerCase();
+    var pw = document.getElementById('signpass');
     var btn = document.getElementById('signbtn'), msg = document.getElementById('signmsg');
-    if(!email) return;
     btn.disabled = true;
-    msg.textContent = 'Sending…';
-    sb.auth.signInWithOtp({email: email, options: {shouldCreateUser: true,
-      emailRedirectTo: location.origin + location.pathname}}).then(function(res){
+    msg.textContent = 'Signing in…';
+    sb.auth.signInWithPassword({email: email, password: pw.value}).then(function(res){
       btn.disabled = false;
-      if(!res.error){
-        msg.textContent = 'Check your inbox: we have emailed a sign-in link to '
-          + email + '. Open it on this device.';
-        return;
-      }
+      pw.value = '';
+      if(!res.error){ msg.textContent = ''; return; }
       var m = res.error.message || '';
-      msg.textContent = /database error|not on the/i.test(m)
-        ? 'That email is not on the leads app list. Ask Jose to add you.'
-        : /rate|seconds/i.test(m)
-          ? 'Too many sign-in emails just now — wait a minute and try again.'
-          : 'Could not send the link (' + m + ').';
+      msg.textContent = /invalid login/i.test(m)
+        ? 'That email and password don’t match. Forgotten it? Ask Jose to reset it.'
+        : /rate|too many/i.test(m)
+          ? 'Too many attempts — wait a minute and try again.'
+          : 'Could not sign in (' + m + ').';
     });
   });
   document.getElementById('signout').addEventListener('click', function(){
     sb.auth.signOut().then(function(){ location.hash = ''; location.reload(); });
+  });
+  var pwform = document.getElementById('pwform');
+  document.getElementById('pwopen').addEventListener('click', function(){
+    pwform.hidden = !pwform.hidden;
+    document.getElementById('pwmsg').textContent = '';
+    if(!pwform.hidden) document.getElementById('pwnew').focus();
+  });
+  document.getElementById('pwcancel').addEventListener('click', function(){
+    pwform.reset(); pwform.hidden = true; });
+  pwform.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var a = document.getElementById('pwnew').value, b = document.getElementById('pwnew2').value;
+    var msg = document.getElementById('pwmsg');
+    if(a !== b){ msg.textContent = 'The two passwords don’t match.'; return; }
+    msg.textContent = 'Saving…';
+    sb.auth.updateUser({password: a}).then(function(res){
+      if(res.error){ msg.textContent = 'Not changed (' + res.error.message + ').'; return; }
+      pwform.reset();
+      msg.textContent = 'Password changed.';
+      setTimeout(function(){ pwform.hidden = true; msg.textContent = ''; }, 2500);
+    });
   });
 
   var started = false;
@@ -968,12 +982,6 @@
       document.getElementById('signin').hidden = true;
       document.getElementById('app').hidden = false;
       initLeadFilters();
-      var next = '';
-      try { next = localStorage.getItem(NEXT_KEY) || ''; localStorage.removeItem(NEXT_KEY); } catch(err){}
-      if(next){ try { history.replaceState(null, '', '#' + next); } catch(err){} }
-      else if(/access_token/.test(location.hash)){
-        try { history.replaceState(null, '', location.pathname); } catch(err){}
-      }
       route();
       reload();
       // live: new leads and colleagues' changes arrive as they happen
@@ -993,7 +1001,6 @@
   sb.auth.getSession().then(function(res){
     var session = res.data && res.data.session;
     if(session) start(session);
-    else signedOut(/error_description/.test(location.hash)
-      ? 'That sign-in link has expired or was already used. Ask for a new one.' : '');
+    else signedOut('');
   });
 })();
