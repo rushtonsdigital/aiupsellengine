@@ -11,6 +11,7 @@ import sqlalchemy as sa
 import config
 
 _REPORTING_SQL = Path(__file__).resolve().parent / "reporting.sql"
+_LEADS_APP_SQL = Path(__file__).resolve().parent / "leads_app.sql"
 
 metadata = sa.MetaData()
 
@@ -371,6 +372,7 @@ def init_db(engine: sa.Engine | None = None) -> sa.Engine:
     _migrate_leads(engine)
     if engine.dialect.name == "postgresql":
         apply_reporting_views(engine)
+        apply_leads_app_sql(engine)
     return engine
 
 
@@ -467,6 +469,14 @@ def apply_reporting_views(engine: sa.Engine) -> None:
     # for bind parameters.
     with engine.begin() as conn:
         conn.exec_driver_sql(sql)
+
+
+def apply_leads_app_sql(engine: sa.Engine) -> None:
+    """Sign-in allowlist, read policies and write functions for the leads app
+    (leads_app.sql). Supabase-only: it uses auth.users / auth.jwt(), so init_db
+    calls it on Postgres alone. Idempotent, re-applied every run."""
+    with engine.begin() as conn:
+        conn.exec_driver_sql(_LEADS_APP_SQL.read_text(encoding="utf-8"))
 
 
 def _migrate_products(engine: sa.Engine) -> None:
