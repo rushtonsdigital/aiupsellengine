@@ -368,3 +368,4 @@ LEAD_VERDICT_DUE_DAYS = {"Pursue with urgency": 0, "Pursue": 1, "Nurture": 7,
 LEADS_APP_SUPABASE_URL = "https://bhlgphaokfbhcetzersv.supabase.co"
 LEADS_APP_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGdwaGFva2ZiaGNldHplcnN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NDEzNjksImV4cCI6MjA5OTAxNzM2OX0.qlsmugZEjwJAUtyfNPNEYZ3uPPoByDmunAo_OjwLzOs"
 COMMERCIAL_DASHBOARD_URL = "https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW"
+LEADS_APP_URL = "https://rushtons-leads.pages.dev"
