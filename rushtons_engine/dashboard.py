@@ -918,8 +918,9 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
     values, all_months = _load_values()
     value_months = all_months[-12:]
     history, product_names = _load_history(as_of)
-    leads_data = _load_leads()
-    _suggest_lead_matches(leads_data, directory, contacts)
+    # Leads moved to the leads app (leads_app/) on 2026-11-01: live, signed in,
+    # and not on this page, which anyone with its link can open.
+    leads_data = []
 
     cats_master, cats = _load_cats_all()
     data = {
@@ -984,6 +985,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{REPS_CHART}}", _svg_reps(reps))
             .replace("{{KPI_SALES}}", kpi_sales)
             .replace("{{LOGO}}", LOGO_SVG)
+            .replace("{{LEADS_APP_URL}}", e(config.LEADS_APP_URL))
             .replace("{{VALUE_NOTE}}", value_note)
             .replace("{{SALES_CHART}}", _svg_monthly(all_months))
             .replace("{{HELP}}", help_section.help_html(
@@ -1399,8 +1401,7 @@ input[type="date"].act { cursor:text; }
       <button data-tab="accounts">Accounts</button>
       <button data-tab="contacts">Contacts</button>
       <span class="ng">ACQUIRE</span>
-      <button data-tab="leads">Leads</button>
-      <button data-tab="leadrecs">Follow-ups<span class="navn" id="fu-count"></span></button>
+      <button data-tab="leads">Leads &#8599;</button>
       <span class="ng">GROW</span>
       <button data-tab="actions">This week</button>
       <button data-tab="protect">Protect</button>
@@ -1594,40 +1595,12 @@ input[type="date"].act { cursor:text; }
     <div class="section" id="sec-leads">
       <div class="play">
         <div class="tag">ACQUIRE &#183; LEADS</div>
-        <h2>Lead pipeline</h2>
-        <p class="lede">Website enquiries arrive here straight from the forms,
-          researched and rated by AI the moment they come in (the sales team
-          gets the same write-up by email). Open a lead to move it through the
-          funnel, log calls and notes, and set the next follow-up. Won leads
-          link to their Fresho account and pull orders and &#163; sales.</p>
-        <div class="lbox" id="lead-missing" hidden></div>
-        <div class="kpis" id="lead-kpis"></div>
-        <div class="dh">FUNNEL &#8212; HOW FAR LEADS GET (commercial leads, excluding test/personal)</div>
-        <div id="lead-funnel"></div>
-        <div class="dirbar" style="margin-top:1rem">
-          <input class="act noteinput" id="leadq" type="search"
-            placeholder="Search business, contact, email…" aria-label="Search leads">
-          <select class="act" id="leadstatus" aria-label="Filter by stage"></select>
-          <select class="act" id="leadowner" aria-label="Filter by owner"></select>
-          <select class="act" id="leadverdict" aria-label="Filter by AI verdict"></select>
-          <select class="act" id="leadrating" aria-label="Filter by rating">
-            <option value="0">Any rating</option>
-            <option value="4">&#9733;4 and up</option>
-            <option value="3">&#9733;3 and up</option>
-          </select>
-          <label class="said" style="display:flex;align-items:center;gap:6px;">
-            <input type="checkbox" id="leadexcl"> show excluded (test/personal)
-          </label>
-          <label class="said whoami">You are
-            <select class="act" data-whoami aria-label="Who are you"></select></label>
-        </div>
-        <div class="list" id="leadlist"></div>
-        <details class="help" style="margin-top:1rem">
-          <summary>Conversion by AI rating</summary>
-          <div class="scroll" id="lead-ratings"></div>
-        </details>
-        <p class="note">Excluded rows (test entries, personal sample-box asks,
-          internal addresses) stay out of every number above.</p>
+        <h2>Leads have moved to the Leads app</h2>
+        <p class="lede">Website leads, their AI research, the follow-ups and
+          everything the team logs now live in the Leads app, updated the
+          moment a lead comes in. Sign in with your work email and password.</p>
+        <p><a class="act" href="{{LEADS_APP_URL}}" target="_blank"
+          rel="noopener">Open the Leads app &#8599;</a></p>
       </div>
     </div>
 
