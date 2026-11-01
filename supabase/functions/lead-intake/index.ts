@@ -24,7 +24,8 @@
 //                            — its domain must be verified in Resend
 //   LEAD_NOTIFY_TO           comma-separated sales-team addresses
 //   LEAD_NOTIFY_INTERNAL_TO  where test/internal leads go instead
-//   DASHBOARD_URL            linked from the email
+//   LEADS_APP_URL            the leads app; each email links to the lead's page
+//   DASHBOARD_URL            fallback link target until LEADS_APP_URL is set
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import Anthropic from "npm:@anthropic-ai/sdk@0.110.0";
@@ -521,10 +522,12 @@ async function notify(lead: Lead): Promise<boolean> {
     + (lead.rating && lead.verdict !== "Reject" ? ` — ${lead.rating}/5` : "")
     + (lead.type ? ` (${lead.type})` : "");
   const dash = Deno.env.get("DASHBOARD_URL") || "";
-  // Deep link to this lead's page. claude.ai only hands a plain fragment
-  // (no "/" or "|") to the page, so "w|<id>" travels as "#lead-<id>".
-  const leadLink = dash
-    ? `${dash.replace(/#.*$/, "")}#lead-${lead.source_id.replace(/^w\|/, "")}` : "";
+  // Deep link to this lead's page in the leads app (LEADS_APP_URL), or on
+  // the dashboard until the app is set. "w|<id>" travels as "#lead-<id>"
+  // (claude.ai only passes a plain fragment through; the app reads both).
+  const app = Deno.env.get("LEADS_APP_URL") || dash;
+  const leadLink = app
+    ? `${app.replace(/#.*$/, "")}#lead-${lead.source_id.replace(/^w\|/, "")}` : "";
   const facts: [string, string][] = [
     ["Business", lead.business], ["Contact", lead.name],
     ["Email", lead.email], ["Phone", lead.phone],
@@ -553,7 +556,7 @@ ${lead.verdict ? `<p style="margin:0 0 10px;padding:8px 12px;border-radius:6px;f
 ${leadLink ? `<p style="margin:12px 0"><a href="${esc(leadLink)}" style="display:inline-block;background:#007946;color:#fff;text-decoration:none;font-weight:bold;padding:10px 16px;border-radius:6px">Open the lead page &rarr;</a>
 <br><span style="color:#777;font-size:12px">Change the verdict, set the stage, log calls and notes there.</span></p>` : ""}
 <pre style="white-space:pre-wrap;font-family:inherit;background:#f6f6f4;padding:12px;border-radius:6px">${esc(analysis)}</pre>
-${leadLink ? `<p><a href="${esc(leadLink)}">Open the lead page on the dashboard</a></p>` : ""}
+${leadLink ? `<p><a href="${esc(leadLink)}">Open the lead page</a></p>` : ""}
 </div>`;
   // Resend REST API (https://resend.com/docs/api-reference/emails/send-email)
   const resp = await fetch("https://api.resend.com/emails", {

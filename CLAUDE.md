@@ -203,10 +203,16 @@ layer** for BI reports and ad-hoc data questions:
   (JWT verification stays OFF — Elementor can't send a key). Config lives in Edge Function
   Secrets (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `LEAD_NOTIFY_FROM`, `LEAD_NOTIFY_TO`,
   `LEAD_NOTIFY_INTERNAL_TO`, `DASHBOARD_URL`). `python leads.py retry` finishes leads whose
-  AI/email step failed. The team works leads on the dashboard (lead pages, funnel, Follow-ups):
-  stages, rules and team live in `config.LEAD_*`; actions are harvested weekly into
-  `lead_activities` (`leads.apply_activity_log`) — the same event shape the logged-in app
-  will write live.
+  AI/email step failed.
+- **Leads app** (`leads_app/`, static, hosted on Cloudflare Pages from `main`): the team's live
+  leads CRM — lead pages, funnel, Follow-ups. Reads Supabase directly (anon key + sign-in by
+  emailed link; Realtime pushes new leads in) and writes only through the functions in
+  `rushtons_engine/leads_app.sql` (applied every `init_db`), which credit each action to the
+  signed-in person. Only `public.app_users` can sign in — `python leads.py adduser <email>
+  "<Name>"`. `leads_app/config.js` is generated: `python leads.py appconfig` after changing
+  any `config.LEAD_*` (a test fails if it's stale). Stages, rules and team live in
+  `config.LEAD_*`; the dashboard's old leadLog harvest (`leads.apply_activity_log`) stays
+  for state saved before the move.
 - Performance note: the summary tables answer in ~100ms and the whole dashboard
   builds in ~1s. `v_order_lines` scans all order lines (~9s) — use it for
   drill-down only, never for aggregates.

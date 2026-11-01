@@ -360,3 +360,11 @@ LEAD_TEAM_NOT_PEOPLE = {"Market Customer", "Customer Service"}
 LEAD_VERDICTS = ["Pursue with urgency", "Pursue", "Nurture", "Pass to rep", "Reject"]
 LEAD_VERDICT_DUE_DAYS = {"Pursue with urgency": 0, "Pursue": 1, "Nurture": 7,
                          "Pass to rep": 1}
+
+# The leads app (leads_app/, hosted on Cloudflare Pages). These are public by
+# design: the anon key only reaches what the sign-in rules in leads_app.sql
+# allow. leads_app/config.js is generated from this file and the LEAD_*
+# settings above (python leads.py appconfig) - never edit it by hand.
+LEADS_APP_SUPABASE_URL = "https://bhlgphaokfbhcetzersv.supabase.co"
+LEADS_APP_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGdwaGFva2ZiaGNldHplcnN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0NDEzNjksImV4cCI6MjA5OTAxNzM2OX0.qlsmugZEjwJAUtyfNPNEYZ3uPPoByDmunAo_OjwLzOs"
+COMMERCIAL_DASHBOARD_URL = "https://claude.ai/artifact/FawjU1zri4r2CBfEViBbTW"
