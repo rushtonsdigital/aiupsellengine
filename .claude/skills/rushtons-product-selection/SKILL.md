@@ -23,11 +23,11 @@ Italian trattoria typed as a "Bar" will have baby veg, micros and mushroom sitti
 herbs, when those are exactly what its kitchen wants. Read the venue, then decide which categories
 fit; ignore the rest.
 
-Your job is to shortlist **up to five products per account** — a menu of options for the human
+Your job is to shortlist **6-8 products per account** (see feedback-log 2026-10-27/28) — a menu of options for the human
 running the campaign to pick the final box from, not a fixed box. Favour a **spread across the
-categories that fit** over five near-duplicates from one, so the human has real choice. The quality
+categories that fit** over five near-duplicates from one, so the human has real choice; mark the 2-4 the message names `in_message: true`. The quality
 bar is unchanged: every product on the shortlist must be defensible on its own. If only two things
-genuinely fit, shortlist two — five is a ceiling, not a target.
+genuinely fit, shortlist two — eight is a ceiling, and fewer than six needs a reason.
 
 Pool items carry two trade signals, both of which you weigh rather than obey:
 
@@ -105,8 +105,8 @@ how the source data gets fixed rather than silently patched over.
 
 ## Output
 
-Per account, produce: a `customer_review` (from your search), `chosen_products` (the shortlist of up
-to five, each with `code`, `name`, `category`, `why` — codes must come from that account's pool,
+Per account, produce: a `customer_review` (from your search), `chosen_products` (the shortlist of 6-8,
+each with `code`, `name`, `category`, `why`, `in_message` — codes must come from that account's pool,
 never invented), and optional `data_notes`. The exact JSON shape is in the drafting brief's
 `instructions` field. Then hand over to the `rushtons-comms` skill to write the messages around your
 picks.

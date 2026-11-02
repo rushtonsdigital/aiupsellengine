@@ -55,17 +55,24 @@ INSTRUCTIONS = (
     "Each account's `product_pool` covers EVERY category they don't currently "
     "buy (that has stock), ordered by likely relevance — but the order is only "
     "a hint. Choosing which categories fit this venue is YOUR job, not the "
-    "order's: a category near the bottom may be the best one. `buyers_14d` is a "
+    "order's: a category near the bottom may be the best one. The pool's "
+    f"'{config.SEASONAL_POOL_KEY}' section adds peak-season lines this account "
+    "has never bought from categories it already buys. `buyers_14d` is a "
     "popularity signal, NOT a recommendation — it favours commodity staples "
     "over the specialty lines worth pitching. REQUIRED: run a live web search "
     "of every venue before picking — you cannot judge fit from a customer code, "
     "and venue_type is often thin or 'Unknown'. Record what you found in "
     "`customer_review` (say so explicitly if a venue can't be found). Then "
-    f"shortlist up to {config.MAX_CHOSEN_PRODUCTS} products that genuinely fit "
+    f"shortlist {config.MIN_CHOSEN_PRODUCTS}-{config.MAX_CHOSEN_PRODUCTS} products that genuinely fit "
     "— a menu of options for the human running the campaign, so favour a SPREAD "
     "across the categories that fit rather than near-duplicates from one, with "
     "a one-line `why` for each. Quality bar unchanged: every one must be "
-    "defensible; give fewer if fewer fit. You may only choose codes in that "
+    "defensible; give fewer only if fewer fit. Mark 2-"
+    f"{config.MAX_IN_MESSAGE} of them `\"in_message\": true` — the ones the WhatsApp "
+    "message names; the rest are additional products for the box. Vary "
+    "across the week: no product may be named in more than "
+    f"{config.MAX_SAME_PRODUCT_IN_MESSAGES} accounts' messages. Never pitch "
+    "something the account already buys in another form. You may only choose codes in that "
     "account's product_pool — never invent one. Ignore any category that "
     "doesn't fit the venue. Note any product-labelling problem in "
     "`data_notes`.\n\n"
@@ -137,6 +144,18 @@ def _validate(drafts: dict, recommendations: list[dict]) -> None:
         raise ValueError(f"drafts missing for selected accounts: {sorted(missing)}")
 
     pools = {r["customer_code"]: r["product_pool"] for r in recommendations}
+    named_in = {}
+    for code, entry in drafts.items():
+        for p in (entry.get("chosen_products") or []) if isinstance(entry, dict) else ():
+            if p.get("in_message") and p.get("code"):
+                named_in.setdefault(p["code"], []).append(code)
+    repeated = {c: a for c, a in named_in.items()
+                if len(a) > config.MAX_SAME_PRODUCT_IN_MESSAGES}
+    if repeated:
+        raise ValueError(
+            f"the same product is named in too many messages this week "
+            f"(max {config.MAX_SAME_PRODUCT_IN_MESSAGES}): {repeated} — vary the "
+            "picks; the team flagged the list as repetitive")
     for code, entry in drafts.items():
         if not isinstance(entry, dict) or "messages" not in entry:
             raise ValueError(
@@ -174,6 +193,16 @@ def _validate(drafts: dict, recommendations: list[dict]) -> None:
             if not (p.get("why") or "").strip():
                 raise ValueError(f"{code}: product {p['code']} has no `why` — "
                                  "every pick needs a one-line justification")
+        named = [p for p in chosen if p.get("in_message")]
+        if len(named) > config.MAX_IN_MESSAGE:
+            raise ValueError(
+                f"{code}: {len(named)} products marked in_message, max is "
+                f"{config.MAX_IN_MESSAGE} — keep the message short; the rest go "
+                "in the box as additional products")
+        if len(chosen) < config.MIN_CHOSEN_PRODUCTS:
+            log.warning("%s: only %d products shortlisted (aim %d-%d)", code,
+                        len(chosen), config.MIN_CHOSEN_PRODUCTS,
+                        config.MAX_CHOSEN_PRODUCTS)
 
         empty = [s for s in STAGES if not (entry["messages"].get(s) or "").strip()]
         if empty:

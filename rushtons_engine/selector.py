@@ -132,8 +132,10 @@ def selection_holds(custs: dict, stats: dict, as_of: date) -> set[str]:
     held = set(config.HOLD_CUSTOMER_CODES)
     for code, c in custs.items():
         name = (c.customer_name or "").strip().casefold()
+        rep = (c.sales_rep or "").strip().casefold()
         if (c.venue_type in config.PARKED_VENUE_TYPES
-                or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)):
+                or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)
+                or (config.SELECTION_SALES_REPS and rep not in config.SELECTION_SALES_REPS)):
             held.add(code)
     window_open = min((s["first_order"] for s in stats.values()), default=as_of)
     # An account trading in the first fortnight of our data predates the
@@ -272,6 +274,27 @@ def build_product_pool(conn, category: str, as_of: date,
     return ranked[:config.POOL_PER_GAP]
 
 
+def build_seasonal_pool(conn, as_of: date, exclude_skus: set[str],
+                        skip: set[str]) -> list[dict]:
+    """Peak-season lines the account has never bought, from categories it
+    DOES already buy (gap categories have their own pool, `skip`).
+
+    Gap categories alone left some accounts with one category to choose 6-8
+    products from (a bakery: mushrooms only). Laurence 2026-10-27/28 built his
+    boxes from exactly this - cavolo nero, quince, kohlrabi, Roscoff onions for
+    kitchens that already buy veg - checking each account's orders by hand.
+    """
+    items = []
+    for category in config.TARGETABLE_CATEGORIES:
+        if category in skip:
+            continue
+        items += [dict(p, category=category)
+                  for p in build_product_pool(conn, category, as_of, exclude_skus)
+                  if p.get("season") == "peak"]
+    items.sort(key=lambda p: (-p["buyers_14d"], p["code"]))
+    return items[:config.SEASONAL_POOL_SIZE]
+
+
 def select_top(conn, run_date: date | None = None) -> list[dict]:
     """Rank candidates and persist the top N to recommendations.
     Re-running for the same run_date replaces that run's rows (idempotent)."""
@@ -396,6 +419,10 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             if len(pool) >= config.MAX_GAP_CATEGORIES_OFFERED:
                 break
         offered_cats = list(pool)
+        seasonal_items = build_seasonal_pool(conn, as_of, skus.get(code, set()),
+                                             skip=set(pool))
+        if seasonal_items:
+            pool[config.SEASONAL_POOL_KEY] = seasonal_items
         rationale = (
             f"{c.venue_type}; {c.activity_status}; {s['num_orders']} orders "
             f"({s['num_orders'] / span_weeks:.1f}/wk), "

@@ -6,6 +6,13 @@ import sqlalchemy as sa
 import db
 
 
+@pytest.fixture(autouse=True)
+def _all_reps_selectable(monkeypatch):
+    """Tests seed accounts under any rep; the live rep allow-list is tested on its own."""
+    import config
+    monkeypatch.setattr(config, "SELECTION_SALES_REPS", set())
+
+
 @pytest.fixture()
 def conn():
     """Fresh in-memory database per test."""

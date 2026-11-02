@@ -161,3 +161,39 @@ def test_incomplete_simple_option_is_rejected(conn, tmp_path):
         messages_simple={"announcement": "Quince is in."})})
     with pytest.raises(ValueError, match="messages_simple"):
         draft.apply_drafts(conn, drafts, [_rec("C ONE")])
+
+
+def test_apply_caps_products_named_in_message(conn, tmp_path, monkeypatch):
+    """Laurence 2026-10-27/28: a 6-8 shortlist, but the message names only a
+    few - the rest are additional box products."""
+    import config
+    monkeypatch.setattr(config, "MAX_IN_MESSAGE", 1)
+    picks = [{"code": c, "name": n, "category": "Dairy and Chilled", "why": "ok",
+              "in_message": True} for c, n in (("DAI-1", "Burrata"), ("DAI-2", "Eggs"))]
+    drafts = _write_drafts(tmp_path, {"C ONE": _entry(chosen_products=picks)})
+    with pytest.raises(ValueError, match="marked in_message"):
+        draft.apply_drafts(conn, drafts, [_rec("C ONE")])
+
+
+def test_apply_rejects_same_product_in_too_many_messages(conn, tmp_path, monkeypatch):
+    """Variety across the week's list (Delica squash and beetroot everywhere)."""
+    import config
+    monkeypatch.setattr(config, "MAX_SAME_PRODUCT_IN_MESSAGES", 1)
+    pick = [{"code": "DAI-1", "name": "Burrata", "category": "Dairy and Chilled",
+             "why": "ok", "in_message": True}]
+    drafts = _write_drafts(tmp_path, {"C ONE": _entry(chosen_products=pick),
+                                      "C TWO": _entry(chosen_products=pick)})
+    with pytest.raises(ValueError, match="too many messages"):
+        draft.apply_drafts(conn, drafts, [_rec("C ONE", 1), _rec("C TWO", 2)])
+
+
+def test_tracker_splits_named_and_additional_products():
+    import export
+    rec = {"chosen_products": [
+        {"code": "A", "name": "Quince", "in_message": True},
+        {"code": "B", "name": "Salsify"}]}
+    assert export._pitched(rec) == "Quince (A)"
+    assert export._pitched(rec, additional=True) == "Salsify (B)"
+    legacy = {"chosen_products": [{"code": "A", "name": "Quince"}]}
+    assert export._pitched(legacy) == "Quince (A)"
+    assert export._pitched(legacy, additional=True) == ""
