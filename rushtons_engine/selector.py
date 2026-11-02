@@ -135,7 +135,8 @@ def selection_holds(custs: dict, stats: dict, as_of: date) -> set[str]:
         rep = (c.sales_rep or "").strip().casefold()
         if (c.venue_type in config.PARKED_VENUE_TYPES
                 or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)
-                or (config.SELECTION_SALES_REPS and rep not in config.SELECTION_SALES_REPS)):
+                or (config.SELECTION_SALES_REPS and rep not in config.SELECTION_SALES_REPS)
+                or (c.account_stage or "").strip().casefold() in config.HOLD_ACCOUNT_STAGES):
             held.add(code)
     window_open = min((s["first_order"] for s in stats.values()), default=as_of)
     # An account trading in the first fortnight of our data predates the

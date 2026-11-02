@@ -363,6 +363,18 @@ def test_selection_limited_to_named_reps(conn, monkeypatch):
     assert prestige["BEN"] != "Excluded"
 
 
+def test_dead_accounts_held_from_selection(conn):
+    """Jose 2026-11-02: Fresho stage 'dead' = a lost account (Padella Shoreditch)."""
+    _seed_catalogue(conn)
+    for code in ("ALIVE", "LOST"):
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
+    conn.execute(db.customers.update().where(db.customers.c.customer_code == "LOST")
+                 .values(account_stage="Dead"))
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "ALIVE" in codes and "LOST" not in codes
+
+
 def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     """The month's seasonal list: 'out' lines never reach the pool, 'peak'
     lines lead it (even with no recent buyers) and carry the flag + note."""

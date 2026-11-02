@@ -227,6 +227,10 @@ PARKED_VENUE_TYPES = {"Event catering", "Corporate Catering"}
 # because it is typically Rob and Ben's accounts". Rob/Ben/Jana accounts stay
 # on the dashboard - this is selection-only.
 SELECTION_SALES_REPS = {"harry (rushtons)", "laurence (rushtons)"}
+# Fresho account stages kept out of the pull (casefolded). 'dead' = a lost
+# account - Jose 2026-11-02 on Padella Shoreditch: "the account was lost (so
+# indeed 'dead')". Selection-only: they stay on the dashboard's win-back view.
+HOLD_ACCOUNT_STAGES = {"dead"}
 # Brand-new accounts aren't upsold yet ("Brand new account, no need to upsell
 # yet" - Laurence, Around the Cluck & Kossoffs). Raised from 6 weeks to three
 # months at the 2026-10-19 Hannah catch-up ("so that they can stabilize";
