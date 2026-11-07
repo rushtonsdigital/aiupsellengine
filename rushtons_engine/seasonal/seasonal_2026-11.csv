@@ -1,0 +1,31 @@
+pattern,status,note,source
+^cabbage black cavolo nero,peak,British - cavolo nero,"Laurence's 27 Oct boxes (Fox & Hounds, Bird in Hand); UK November season"
+^kale - (purple|variegated),peak,British - purple and variegated kale,Laurence's 27 Oct box (Starfish); UK November season
+^broccoli - purple sprouting,peak,Purple sprouting broccoli - early season,Laurence's 27 Oct box (The Atlas)
+^cicoria,peak,Italian - cicoria,Laurence's 27 Oct box (The Atlas)
+^cime di rapa,peak,Italian - cime di rapa,Italian winter greens season
+^kohlrabi,peak,Kohlrabi,"Laurence's 27 Oct boxes (Tempo, Banya)"
+^onions - roscoff,peak,French - Roscoff onions,"Laurence's 27 Oct boxes (Starfish, Faber)"
+^mandarins - miyagawa,peak,Miyagawa mandarins - start of citrus season,Laurence's 27 Oct box (Faber)
+^clementines,peak,Clementines - start of citrus season,Winter citrus season
+^bergamot,peak,Italian - bergamot (Nov-Jan),Winter citrus season
+^artichokes - (baby|jerusalem),peak,Baby artichokes and Jerusalem artichokes,"Laurence's 27 Oct boxes (Tempo, The Atlas); UK November season"
+^carrots - (baby heritage|heritage|purple|yellow|white),peak,Heritage carrots,Laurence's 27 Oct box (The Atlas)
+^salsify,peak,European - salsify,Laurence's 27 Oct box (Fox & Hounds); Oct market report
+^chervil root,peak,European - chervil root,Oct market report carried forward
+^celeriac,peak,British - celeriac,UK November season
+^(parsnip|baby piccalo parsnips),peak,British - parsnips,Oct market report carried forward
+^brussels sprouts,peak,British - Brussels sprouts,Oct market report carried forward
+^lettuce - (castelfranco|radicchio|treviso),peak,Italian - radicchio family,Oct market report (Treviso) carried forward
+^chicory - (red|white),peak,Chicory / endive,UK/European November season
+^puntarella,peak,Italian - puntarelle,Oct market report carried forward
+^mushrooms - (pied de mouton|trompette),peak,Pied de mouton and trompettes,European wild mushroom season
+^mushroom - cepes,peak,Ceps,European wild mushroom season
+^fresh truffles - black,peak,European - black truffle,Oct market report carried forward
+^pears - (decana|abate),peak,Italian - Decana and Abate pears,Oct market report carried forward
+^apples - (cox|bramley),peak,British - Cox and Bramley apples,Oct market report carried forward
+^(kaki|persimmon),peak,Italian - kaki / persimmon,Oct market report carried forward
+^pomegranates,peak,Italian - pomegranates,Oct market report carried forward
+^chestnuts$,peak,European - chestnuts in shell,Oct market report carried forward
+^mushrooms - girolles scottish,out,Scottish girolles are out of season,Laurence 14 Oct
+^tomatoes - heirloom premium .*\(iow\),out,Isle of Wight heritage tomatoes are out of season,Laurence 14 Oct

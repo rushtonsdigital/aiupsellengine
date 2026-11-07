@@ -28,22 +28,32 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 SUMMARY_COLS = [
     "Rank", "Customer Code", "Customer Name", "Venue Type", "Account Manager",
     "Size Band", "Orders (month)", "SKUs", "Categories Bought",
-    "Gap Categories (offered)", "Products Pitched", "Score",
+    "Gap Categories (offered)", "Products Pitched", "Additional Products (box only)", "Score",
     "WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
     "Simple - Announcement", "Simple - Follow-up", "Simple - Post-box",
     "Contact (phone)", "Valid Suggestion (Y/N)", "Option Sent (A/B)", "Sent Date",
     "Customer Replied (Y/N)", "Box Sent (Y/N)", "Outcome", "Notes",
 ]
-SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 34, 8, 45, 45, 45,
+SUMMARY_COL_WIDTHS = [6, 14, 30, 16, 18, 10, 12, 8, 28, 30, 34, 34, 8, 45, 45, 45,
                      45, 45, 45, 16, 12, 12, 12, 12, 12, 18, 30]
 WHATSAPP_COL_LABELS = ("WhatsApp - Announcement", "WhatsApp - Follow-up", "WhatsApp - Post-box",
                        "Simple - Announcement", "Simple - Follow-up", "Simple - Post-box")
 
 
-def _pitched(rec: dict) -> str:
-    """The products the drafter actually chose — blank until drafts applied."""
+def _named(rec: dict) -> bool:
+    """Older drafts carry no in_message flag: then every pick is 'pitched'."""
+    return any(p.get("in_message") for p in rec.get("chosen_products") or [])
+
+
+def _pitched(rec: dict, additional: bool = False) -> str:
+    """The products the drafter chose — blank until drafts applied. Split into
+    those the message names and the additional box-only ones (Laurence
+    2026-10-27: 'another column which could be "additional products"')."""
+    flagged = _named(rec)
     return ", ".join(f"{p['name']} ({p['code']})"
-                     for p in rec.get("chosen_products") or [])
+                     for p in rec.get("chosen_products") or []
+                     if (flagged and bool(p.get("in_message")) != additional)
+                     or (not flagged and not additional))
 
 
 def _wrapped_row_height(texts: list[str], chars_per_line: int = 45,
@@ -148,6 +158,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
             "Categories Bought": ", ".join(rec["bought_categories"]),
             "Gap Categories (offered)": ", ".join(rec["gap_categories"]),
             "Products Pitched": _pitched(rec),
+            "Additional Products (box only)": _pitched(rec, additional=True),
             "Score": float(rec["score"]),
             **messages,
             "Contact (phone)": "", "Valid Suggestion (Y/N)": "",
@@ -166,7 +177,7 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
     used_tabs = {"Summary"}
     for rec in recommendations:
         tab = wb.create_sheet(_safe_tab_name(rec["customer_name"], used_tabs))
-        tab.column_dimensions["A"].width = 22
+        tab.column_dimensions["A"].width = 40
         tab.column_dimensions["B"].width = 90
         row = 1
 
@@ -194,9 +205,12 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
         chosen = rec.get("chosen_products") or []
         _header_row(tab, row, ["Product pitched", "Why this kitchen"])
         row += 1
-        for p in chosen:
-            tab.cell(row=row, column=1,
-                     value=f"{p['name']} ({p['code']})").font = LABEL_FONT
+        flagged = _named(rec)
+        for p in sorted(chosen, key=lambda p: not p.get("in_message")):
+            label = f"{p['name']} ({p['code']})"
+            if flagged:
+                label += " - in message" if p.get("in_message") else " - box only"
+            tab.cell(row=row, column=1, value=label).font = LABEL_FONT
             cell = tab.cell(row=row, column=2, value=p.get("why", ""))
             cell.alignment = WRAP
             row += 1

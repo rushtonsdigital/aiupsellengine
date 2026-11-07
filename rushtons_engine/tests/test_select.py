@@ -346,6 +346,35 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
     assert "NEWBIE" in codes
 
 
+def test_selection_limited_to_named_reps(conn, monkeypatch):
+    """Hannah 2026-10-28: only Harry's and Laurence's books go into the pull;
+    other reps' accounts are held, not Excluded (they stay on the dashboard)."""
+    _seed_catalogue(conn)
+    monkeypatch.setattr(config, "SELECTION_SALES_REPS",
+                        {"harry (rushtons)", "laurence (rushtons)"})
+    reps = {"HARRY": "Harry (Rushtons)", "LAURENCE": "laurence (Rushtons) ",
+            "BEN": "Ben (Rushtons)", "NOREP": None}
+    for code, rep in reps.items():
+        add_customer(conn, code, sales_rep=rep)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert codes == {"HARRY", "LAURENCE"}
+    prestige = {r.customer_code: r.prestige for r in conn.execute(sa.select(db.customers))}
+    assert prestige["BEN"] != "Excluded"
+
+
+def test_dead_accounts_held_from_selection(conn):
+    """Jose 2026-11-02: Fresho stage 'dead' = a lost account (Padella Shoreditch)."""
+    _seed_catalogue(conn)
+    for code in ("ALIVE", "LOST"):
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
+    conn.execute(db.customers.update().where(db.customers.c.customer_code == "LOST")
+                 .values(account_stage="Dead"))
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "ALIVE" in codes and "LOST" not in codes
+
+
 def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     """The month's seasonal list: 'out' lines never reach the pool, 'peak'
     lines lead it (even with no recent buyers) and carry the flag + note."""
@@ -371,6 +400,27 @@ def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     assert pool[0]["season_note"] == "the season of Delica"
     assert "Mushrooms - Girolles Scottish" not in names
     assert "season" not in pool[names.index("Carrots")]
+
+
+def test_seasonal_pool_offers_peak_lines_not_yet_bought(conn, monkeypatch, tmp_path):
+    """Laurence 2026-10-28: 7-8 options per account. Peak lines from categories
+    the account already buys join the pool - minus anything it already buys."""
+    import seasonal
+    (tmp_path / f"seasonal_{AS_OF:%Y-%m}.csv").write_text(
+        "pattern,status,note,source\n^cabbage black cavolo nero,peak,cavolo,Laurence\n"
+        "^kohlrabi,peak,kohlrabi,Laurence\n", encoding="utf-8")
+    monkeypatch.setattr(config, "SEASONAL_DIR", tmp_path)
+    monkeypatch.setattr(config, "TARGETABLE_CATEGORIES", ["Vegetables", "Fruits"])
+    seasonal.rules_for.cache_clear()
+    add_product(conn, "VEG-CAV", name="Cabbage Black Cavolo Nero")
+    add_product(conn, "VEG-KOH-EA", name="Kohlrabi")
+    add_product(conn, "VEG-ONI", name="Onions - Brown")
+    try:
+        pool = sel.build_seasonal_pool(conn, AS_OF, {"VEG-KOH-EA"}, skip={"Fruits"})
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert [p["name"] for p in pool] == ["Cabbage Black Cavolo Nero"]
+    assert pool[0]["category"] == "Vegetables"
 
 
 def test_accounts_with_only_prep_gaps_are_skipped(conn, monkeypatch):
