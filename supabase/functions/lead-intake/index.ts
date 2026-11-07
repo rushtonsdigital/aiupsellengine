@@ -517,7 +517,8 @@ async function notify(lead: Lead): Promise<boolean> {
     "Pursue with urgency": "URGENT", "Pursue": "Pursue", "Nurture": "Nurture",
     "Reject": "REJECT (AI)", "Pass to rep": rep ? `Pass to ${rep}` : "Existing customer",
   };
-  const subject = `${lead.excluded_reason ? "[TEST] " : ""}`
+  // "[Internal]" first: the subject is what people see when they reply.
+  const subject = `${lead.excluded_reason ? "[TEST] " : ""}[Internal] `
     + `${lead.verdict ? label[lead.verdict] || lead.verdict : "New lead"}: ${who}`
     + (lead.rating && lead.verdict !== "Reject" ? ` — ${lead.rating}/5` : "")
     + (lead.type ? ` (${lead.type})` : "");
@@ -540,10 +541,14 @@ async function notify(lead: Lead): Promise<boolean> {
   const analysis = lead.analysis
     || "AI research didn't finish for this lead — it will be retried; "
       + "follow up from the details above.";
-  const text = facts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
+  const internal = "INTERNAL - for the Rushton's team only. Replies to this email "
+    + "go to the team, never to the lead. To contact the lead, start a new email "
+    + "to their address below - never forward or reply-all with this research.";
+  const text = `${internal}\n\n` + facts.filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`)
     .join("\n") + (leadLink ? `\n\nOpen the lead page: ${leadLink}` : "")
     + `\n\n${analysis}\n`;
   const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+<p style="margin:0 0 12px;padding:8px 12px;border-radius:6px;background:#fff3d6;border:1px solid #c98500;font-size:13px"><b>Internal &mdash; for the Rushton&rsquo;s team only.</b> Replies to this email go to the team, never to the lead. To contact the lead, start a new email with the link below &mdash; never forward or reply-all with this research.</p>
 <h2 style="margin:0 0 8px">${esc(who)} <span style="color:#c98500">${esc(stars)}</span></h2>
 ${lead.verdict ? `<p style="margin:0 0 10px;padding:8px 12px;border-radius:6px;font-weight:bold;background:${
   ({ "Pursue with urgency": "#fbe3e3", "Pursue": "#e3f3ea", "Nurture": "#eef0f2",
@@ -551,7 +556,7 @@ ${lead.verdict ? `<p style="margin:0 0 10px;padding:8px 12px;border-radius:6px;f
 }">${esc(label[lead.verdict] || lead.verdict)} — ${esc(lead.verdict_reason || "")}</p>` : ""}
 <table cellpadding="3">${facts.filter(([, v]) => v).map(([k, v]) =>
     `<tr><td style="color:#777">${esc(k)}</td><td>${
-      k === "Email" ? `<a href="mailto:${esc(v)}">${esc(v)}</a>` : esc(v)}</td></tr>`)
+      k === "Email" ? `<a href="mailto:${esc(v)}?subject=${encodeURIComponent("Your enquiry with Rushton's")}">${esc(v)}</a> <span style="color:#777;font-size:12px">(starts a new email to the lead)</span>` : esc(v)}</td></tr>`)
     .join("")}</table>
 ${leadLink ? `<p style="margin:12px 0"><a href="${esc(leadLink)}" style="display:inline-block;background:#007946;color:#fff;text-decoration:none;font-weight:bold;padding:10px 16px;border-radius:6px">Open the lead page &rarr;</a>
 <br><span style="color:#777;font-size:12px">Change the verdict, set the stage, log calls and notes there.</span></p>` : ""}
@@ -563,10 +568,10 @@ ${leadLink ? `<p><a href="${esc(leadLink)}">Open the lead page</a></p>` : ""}
     method: "POST",
     headers: { "Authorization": `Bearer ${key}`,
                "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from, to, subject, text, html,
-      ...(lead.email ? { reply_to: lead.email } : {}),
-    }),
+    // Reply-To is the team, never the lead. It was the lead's address until
+    // 7 Nov 2026, so "Reply all" on a notification sent the internal
+    // research to the lead (the Rhythm 108 incident).
+    body: JSON.stringify({ from, to, subject, text, html, reply_to: to }),
   });
   if (!resp.ok) throw new Error(`Resend ${resp.status}: ${await resp.text()}`);
   return true;
