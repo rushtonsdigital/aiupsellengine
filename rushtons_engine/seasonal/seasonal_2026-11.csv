@@ -19,13 +19,19 @@ pattern,status,note,source
 ^lettuce - (castelfranco|radicchio|treviso),peak,Italian - radicchio family,Oct market report (Treviso) carried forward
 ^chicory - (red|white),peak,Chicory / endive,UK/European November season
 ^puntarella,peak,Italian - puntarelle,Oct market report carried forward
-^mushrooms - (pied de mouton|trompette),peak,Pied de mouton and trompettes,European wild mushroom season
-^mushroom - cepes,peak,Ceps,European wild mushroom season
+^mushrooms - pied de mouton,peak,Pied de mouton,European wild mushroom season (trompettes de-flagged: limited on Fresho 20 Oct)
+^mushroom - cepes,out,Ceps - very short supply (limited on Fresho),"Laurence 4 Nov: ""pretty much out of season and in very short supply""; Jo expects French supply to improve - re-check"
 ^fresh truffles - black,peak,European - black truffle,Oct market report carried forward
 ^pears - (decana|abate),peak,Italian - Decana and Abate pears,Oct market report carried forward
 ^apples - (cox|bramley),peak,British - Cox and Bramley apples,Oct market report carried forward
 ^(kaki|persimmon),peak,Italian - kaki / persimmon,Oct market report carried forward
 ^pomegranates,peak,Italian - pomegranates,Oct market report carried forward
 ^chestnuts$,peak,European - chestnuts in shell,Oct market report carried forward
+^quince$,peak,Quince,Nov market report (4 Nov) - Rest of Europe; Laurence 27 Oct boxes
+^rhubarb - indoor forced,peak,Pink indoor forced rhubarb,Nov market report (4 Nov) - Netherlands
+^monks beard,peak,Italian - monks beard (agretti),Nov market report (4 Nov)
+^swede$,peak,British - swede,Nov market report (4 Nov)
+^cranberries \(fresh\),peak,Fresh cranberries,Nov market report (4 Nov) - Rest of the World
+^pitahaya,peak,Pitahaya,Nov market report (4 Nov) - Rest of the World
 ^mushrooms - girolles scottish,out,Scottish girolles are out of season,Laurence 14 Oct
 ^tomatoes - heirloom premium .*\(iow\),out,Isle of Wight heritage tomatoes are out of season,Laurence 14 Oct

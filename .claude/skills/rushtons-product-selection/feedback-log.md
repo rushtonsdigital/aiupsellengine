@@ -105,3 +105,14 @@ What changes:
   flagged peak in November — still pickable, never the default.
 - **Check each account's actual product history** (last 3 months, product level — not just
   `currently_buys` categories) before picking: no product they already buy in any form or size.
+
+## 2026-11-04 — Ceps were short; Fresho already said so (Laurence, Jo)
+
+Ceps went into two 2 Nov messages (Big Jo Bakery, Duchy) and two box-only lists. Laurence:
+*"Cepes are pretty much out of season and in very short supply – they are listed at limited on
+Fresho."* Jo: *"some ceps have started popping up in France so supply should be better soon!"*
+The November list had flagged ceps `peak` (and the Nov market report lists them), so the monthly
+sources missed it. Ceps are now `out` for November; trompettes de-flagged (also "limited" on
+Fresho). Lesson: Fresho's own availability status (available / limited / unavailable / hidden,
+maintained by Jo) is the faster signal - never pitch a line Fresho shows as limited, and say so
+in `data_notes` if one reaches the pool.
