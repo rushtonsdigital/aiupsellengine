@@ -57,7 +57,12 @@ INSTRUCTIONS = (
     "a hint. Choosing which categories fit this venue is YOUR job, not the "
     "order's: a category near the bottom may be the best one. The pool's "
     f"'{config.SEASONAL_POOL_KEY}' section adds peak-season lines this account "
-    "has never bought from categories it already buys. `buyers_14d` is a "
+    "has never bought from categories it already buys. Accounts with "
+    "`pitch_type` 'new_in_season' are the fallback that fills empty slots: "
+    "they already buy every category worth pitching, so their pool is ONLY "
+    "that seasonal section - pitch what's new in season for a kitchen that "
+    "already buys the range, never 'you haven't tried our X range'. "
+    "`buyers_14d` is a "
     "popularity signal, NOT a recommendation — it favours commodity staples "
     "over the specialty lines worth pitching. REQUIRED: run a live web search "
     "of every venue before picking — you cannot judge fit from a customer code, "
@@ -116,6 +121,7 @@ def export_brief(recommendations: list[dict], run_date, out_dir: Path | None = N
             "orders_last_month": r["num_orders"],
             "distinct_products": r["num_skus"],
             "gap_categories": r["gap_categories"],
+            "pitch_type": "gap" if r["gap_categories"] else "new_in_season",
             "product_pool": r["product_pool"],
             "why_selected": r["rationale"],
         } for r in recommendations],

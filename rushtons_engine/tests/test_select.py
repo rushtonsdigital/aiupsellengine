@@ -454,3 +454,77 @@ def test_no_more_than_max_accounts_per_group(conn, monkeypatch):
     assert len(codes & {"G1", "G2", "G3"}) == 2
     assert "SOLO" in codes
     assert {"STAR1", "STAR2", "STAR3"} <= codes   # '*' means no group
+
+
+def _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines):
+    """Two fully-covered accounts (buy Vegetables + Fruits, the only targetable
+    categories) and one with a real gap; `peak_lines` peak Vegetables lines
+    nobody in the fully-covered pair has bought."""
+    import seasonal
+    rules = "pattern,status,note,source\n" + "".join(
+        f"^peak line {i}$,peak,note {i},test\n" for i in range(peak_lines))
+    (tmp_path / f"seasonal_{AS_OF:%Y-%m}.csv").write_text(rules, encoding="utf-8")
+    monkeypatch.setattr(config, "SEASONAL_DIR", tmp_path)
+    monkeypatch.setattr(config, "TARGETABLE_CATEGORIES", ["Vegetables", "Fruits", "Dairy and Chilled"])
+    monkeypatch.setattr(config, "SEASONAL_FALLBACK_MIN_ITEMS", 3)
+    seasonal.rules_for.cache_clear()
+    _seed_catalogue(conn)
+    for i in range(peak_lines):
+        add_product(conn, f"PK-{i}", name=f"Peak Line {i}", category="Vegetables")
+    for code in ("FULL1", "FULL2"):
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["VEG-1", "FRU-1", "DAI-1"], START, weeks=5)
+    add_customer(conn, "GAPPY")
+    weekly_orders(conn, "GAPPY", ["VEG-1"], START, weeks=5)
+
+
+def test_seasonal_fallback_fills_only_empty_slots(conn, monkeypatch, tmp_path):
+    """Jose 2026-11-09: accounts with no gap worth pitching get a 'what's new in
+    season' pitch - but only when the normal pull leaves the list short."""
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    try:
+        recs = _classify_and_select(conn)
+    finally:
+        seasonal.rules_for.cache_clear()
+    by_code = {r["customer_code"]: r for r in recs}
+    assert recs[0]["customer_code"] == "GAPPY"          # gap accounts lead
+    assert by_code["GAPPY"]["pitch_type"] == "gap"
+    for code in ("FULL1", "FULL2"):                      # slots were free
+        r = by_code[code]
+        assert r["pitch_type"] == "seasonal" and r["gap_categories"] == []
+        assert list(r["product_pool"]) == [config.SEASONAL_POOL_KEY]
+        assert {p["name"] for p in r["product_pool"][config.SEASONAL_POOL_KEY]} \
+            == {f"Peak Line {i}" for i in range(4)}
+
+
+def test_seasonal_fallback_never_displaces_gap_accounts(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    monkeypatch.setattr(config, "TOP_N", 1)
+    try:
+        codes = [r["customer_code"] for r in _classify_and_select(conn)]
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert codes == ["GAPPY"]
+
+
+def test_seasonal_fallback_needs_enough_new_peak_lines(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=2)  # < min 3
+    try:
+        codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert "GAPPY" in codes and not codes & {"FULL1", "FULL2"}
+
+
+def test_seasonal_fallback_can_be_switched_off(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    monkeypatch.setattr(config, "SEASONAL_FALLBACK", False)
+    try:
+        codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert "GAPPY" in codes and not codes & {"FULL1", "FULL2"}

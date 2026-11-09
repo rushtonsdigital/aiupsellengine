@@ -326,6 +326,16 @@ POOL_PER_GAP = 30          # eligible candidates handed to the drafter per gap
 # options per account, which gap categories alone can't always supply.
 SEASONAL_POOL_KEY = "Seasonal - not yet bought"
 SEASONAL_POOL_SIZE = 30
+# "What's new in season" fallback (Jose, 2026-11-09). The 9 Nov pull found 1
+# account against TOP_N because Harry + Laurence's best-covered accounts buy in
+# every category (or only prepped lines are missing), so the gap rule skips
+# them. ONLY when the normal gap-based pull leaves slots empty, those accounts
+# backfill the list with a pool of peak-season lines they have never bought,
+# from the categories they already buy. Needs this month's seasonal list (no
+# peak flags = nothing to offer), and at least this many such lines so the
+# drafter can still shortlist MIN_CHOSEN_PRODUCTS.
+SEASONAL_FALLBACK = True
+SEASONAL_FALLBACK_MIN_ITEMS = 6
 # The drafter shortlists up to this many products per account — a menu of
 # options for the human running the campaign to pick the final box from, not a
 # fixed box. Favour a spread across categories over near-duplicates (see the

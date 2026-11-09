@@ -156,7 +156,8 @@ def write_tracker(recommendations: list[dict], run_date, out_dir: Path | None = 
             "Account Manager": rec["sales_rep"], "Size Band": rec["size_band"],
             "Orders (month)": rec["num_orders"], "SKUs": rec["num_skus"],
             "Categories Bought": ", ".join(rec["bought_categories"]),
-            "Gap Categories (offered)": ", ".join(rec["gap_categories"]),
+            "Gap Categories (offered)": (", ".join(rec["gap_categories"])
+                                         or "None - new in season (fallback)"),
             "Products Pitched": _pitched(rec),
             "Additional Products (box only)": _pitched(rec, additional=True),
             "Score": float(rec["score"]),
