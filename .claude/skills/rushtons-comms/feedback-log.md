@@ -105,3 +105,28 @@ results in terms of people replying saying they wanted the sample box."* Three y
 - His rewrite for Equal Parts (sent): *"Hi team, we've got leafy lemons in, plus fresh
   lemon juice & Miyagawas. Can we send you a sample box to try?"* - short, product
   list, plain offer. That's the Option B target shape.
+
+## 2026-11-04 — Laurence's rewrite pattern (26 Oct sends) + 2 Nov sent unedited
+
+The 26 Oct trackers (read 9 Nov) show how Laurence rewrote every Option B he sent. The pattern:
+
+- **Name when there's one person in the chat** ("Hi @Ingrid", "Hi George & Renato!"), else
+  "Hi team" / "Hi guys". We still write "Hi team"; he swaps names in.
+- **"We'd love to send you a sample box: X, Y & Z"** - the offer up front with the products as a
+  short list, often followed by **"- all in season!"**.
+- **Close: "Can we put one together for you?"** (alongside "Can we send you a sample box to try?").
+- Three products named, no dish idea, one exclamation mark at most.
+
+Examples (original -> sent):
+- Faber: "Hi team, we've got golden and candy beetroot, baby leeks and pink grapefruit segments in.
+  Can we send you a sample box to try?" -> *"Hi guys, we'd love to send you a sample box: Miyagawa,
+  golden beetroot & figs - all in season! Can we put one together for you?"*
+- The Atlas: "...candy and golden beetroot, baby artichokes and heritage carrots in..." ->
+  *"Hi guys! We'd love to send you a sample box: baby artichokes, cicoria & heritage carrots. Can we
+  put one together for you?"*
+
+**2 Nov:** all 8 sent as Option B **unedited**, and 6 said yes - the best uptake yet. So the
+current Option B shape works; lean further toward Laurence's own wording above.
+
+**New in season (from 9 Nov):** fallback accounts already buy every category. Never "you haven't
+tried our X range" - pitch what's new this season for a kitchen that already knows Rushton's.

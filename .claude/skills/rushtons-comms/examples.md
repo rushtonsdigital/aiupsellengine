@@ -40,3 +40,12 @@ what made them work, so this file grows into a real reference set over time.
 
 <!-- Add newly approved drafts below this line, dated, with a one-line note on why
      they worked. This is what turns "our best guess" into a real calibration set. -->
+
+**2026-10-27 — Option B as Laurence actually sent it (Faber; said yes):**
+> Hi guys, we'd love to send you a sample box: Miyagawa, golden beetroot & figs - all in season!
+> Can we put one together for you?
+
+Why it works: offer first, three in-season products as a list, one exclamation, soft close.
+
+**2026-11-03 — Option B sent unedited (2 Nov pull, 6 of 8 said yes):** short, product list,
+"Can we send you a sample box to try?" - the shape that's now proven.
