@@ -202,7 +202,16 @@ GROUP_HOLD_UNTIL = {"clapham leisure group": "2026-11-30"}
 NO_SAMPLE_BOX_NAME_PATTERNS = [r"st\.?\s+james'?\s+court\b"]
 # Single accounts held open-endedly, {code: reason}. Remove by hand when the
 # reason lapses. Dukes: main kitchen closed for refurbishment, bar-only.
-HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)"}
+HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)",
+                       # Laurence, 2026-10-27 tracker notes on the 26 Oct list:
+                       "R FIDELIO": "shut for a while, one order in the last month (2026-10-27)",
+                       "C FORZA": "head office wants another supplier (2026-10-27)",
+                       "R RIVERCAF": "valued customer - don't tell them what to order (2026-10-27)",
+                       "R HYDELON": "Ben lost contact - re-establish before boxes (2026-10-27)",
+                       "C CADOGAN": "chefs left, needs a site visit first (2026-10-27)",
+                       # 2026-11-02 reviewer pass: charity community centre café,
+                       # budget-led and partly on donated surplus - not a box fit.
+                       "R STLUKESP": "charity community café, budget-led (2026-11-02)"}
 # Venue types parked for sample boxes. Event caterers order to their client's
 # brief, so a sample box rarely lands — "let's park that segment for now and
 # revisit" (Hannah, re Zara Goalen). Also covers Schmaltz Production.
@@ -211,6 +220,17 @@ HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)"}
 # "a lot of the Caterers are going through projects so we can't really have
 # much input on what they are buying"; Jose confirmed "all caterers".
 PARKED_VENUE_TYPES = {"Event catering", "Corporate Catering"}
+# Only these account managers' books go into the weekly pull (casefolded Fresho
+# sales_rep; empty = everyone). Hannah, 2026-10-28 call: Harry's uplift on his
+# own accounts counts towards his target, and "if we change it just for now to
+# just Lawrence and Harry's accounts ... it will cut out a lot of the noise
+# because it is typically Rob and Ben's accounts". Rob/Ben/Jana accounts stay
+# on the dashboard - this is selection-only.
+SELECTION_SALES_REPS = {"harry (rushtons)", "laurence (rushtons)"}
+# Fresho account stages kept out of the pull (casefolded). 'dead' = a lost
+# account - Jose 2026-11-02 on Padella Shoreditch: "the account was lost (so
+# indeed 'dead')". Selection-only: they stay on the dashboard's win-back view.
+HOLD_ACCOUNT_STAGES = {"dead"}
 # Brand-new accounts aren't upsold yet ("Brand new account, no need to upsell
 # yet" - Laurence, Around the Cluck & Kossoffs). Raised from 6 weeks to three
 # months at the 2026-10-19 Hannah catch-up ("so that they can stabilize";
@@ -301,11 +321,37 @@ MAX_GAP_CATEGORIES_OFFERED = 12
 # line deep in one of those tails can be missed. The durable fix for that is a
 # curated hero-line list per category from the sales team, not a bigger number.
 POOL_PER_GAP = 30          # eligible candidates handed to the drafter per gap
+# Plus peak-season lines the account has never bought from categories it
+# already buys (selector.build_seasonal_pool) - Laurence 2026-10-28 wants 7-8
+# options per account, which gap categories alone can't always supply.
+SEASONAL_POOL_KEY = "Seasonal - not yet bought"
+SEASONAL_POOL_SIZE = 30
+# "What's new in season" fallback (Jose, 2026-11-09). The 9 Nov pull found 1
+# account against TOP_N because Harry + Laurence's best-covered accounts buy in
+# every category (or only prepped lines are missing), so the gap rule skips
+# them. ONLY when the normal gap-based pull leaves slots empty, those accounts
+# backfill the list with a pool of peak-season lines they have never bought,
+# from the categories they already buy. Needs this month's seasonal list (no
+# peak flags = nothing to offer), and at least this many such lines so the
+# drafter can still shortlist MIN_CHOSEN_PRODUCTS.
+SEASONAL_FALLBACK = True
+SEASONAL_FALLBACK_MIN_ITEMS = 6
 # The drafter shortlists up to this many products per account — a menu of
 # options for the human running the campaign to pick the final box from, not a
 # fixed box. Favour a spread across categories over near-duplicates (see the
 # rushtons-product-selection skill). Client feedback 2026-07-14.
-MAX_CHOSEN_PRODUCTS = 5
+# 2026-10-28 Laurence: 3-4 suggestions meant he spent ages checking each
+# account's orders for more to put in the box - "I think 7 or 8 would be fine!"
+# So the shortlist is 6-8 (fewer only if fewer genuinely fit, which is logged),
+# and only 2-4 of them are named in the WhatsApp message (`in_message`); the
+# rest go in the box as "additional products" (his 27 Oct request).
+MAX_CHOSEN_PRODUCTS = 8
+MIN_CHOSEN_PRODUCTS = 6
+MAX_IN_MESSAGE = 4
+# Variety across the week's list: one product may be named in at most this
+# many accounts' messages. Laurence 2026-10-27: "the suggested produce is very
+# repetitive namely Delica Squash and beetroot".
+MAX_SAME_PRODUCT_IN_MESSAGES = 3
 
 # Internal / non-customer accounts, detected from the customer name.
 INTERNAL_NAME_KEYWORDS = [
@@ -326,6 +372,19 @@ CUSTOMERS_FILE_GLOB = "*customers_*.csv"
 # Fresho Sell > Reports > "Sales Totals and Gross Profit Margin", CSV, one
 # calendar month (or month to date) per file.
 VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
+# Fresho Products > Export ("product list with level prices"), downloaded every
+# week. Only product_code + availability are read - never the price columns.
+PRODUCT_LIST_FILE_GLOB = "*product_list*.csv"
+
+# --- live availability (2026-11-09) ----------------------------------------------
+# The monthly market report missed short supply (ceps, 2 Nov) and arrives after
+# the month's first run; Fresho's availability field (kept by Jo) already showed
+# ceps and Scottish girolles as "limited". Lines Fresho shows with these
+# statuses never reach a product pool. A product absent from the list stays
+# pitchable (unknown, not unavailable).
+UNPITCHABLE_AVAILABILITY = {"limited", "unavailable", "hidden"}
+# Warn when the newest product list loaded is older than this (or missing).
+AVAILABILITY_MAX_AGE_DAYS = 10
 
 # --- leads pipeline (dashboard Leads + Follow-ups) -----------------------------
 # Funnel stages in order: (stored value, label on the page). Acquired/Discarded

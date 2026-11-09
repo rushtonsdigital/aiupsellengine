@@ -356,12 +356,68 @@ def ingest_values_files(conn, paths) -> int:
     return sum(ingest_values_file(conn, p) for _, p in sorted(dated))
 
 
+PRODUCT_LIST_AVAILABILITY_PREFIX = "availability"
+_PRODUCT_LIST_STAMP = re.compile(r"_(\d{8})-\d{4}\.csv$")
+
+
+def product_list_date(path: Path) -> date:
+    """`..._product_list_with_level_prices_20261020-1142.csv` -> 2026-10-20;
+    falls back to the file's modified date."""
+    m = _PRODUCT_LIST_STAMP.search(path.name)
+    if m:
+        return datetime.strptime(m.group(1), "%Y%m%d").date()
+    return datetime.fromtimestamp(path.stat().st_mtime).date()
+
+
+def ingest_product_list_file(conn, path: Path) -> dict:
+    """Fresho product-list export -> products.availability (+ as-of date).
+
+    Reads ONLY product_code and the availability column; the export also
+    carries cost and every price level, which never enter the database.
+    Updates products we already know (the catalogue is built from orders);
+    codes not yet in the catalogue are counted, not added. Idempotent.
+    """
+    as_of = product_list_date(path)
+    statuses: dict[str, str] = {}
+    with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
+        reader = csv.DictReader(fh)
+        fields = reader.fieldnames or []
+        avail_col = next((c for c in fields if c.strip().lower()
+                          .startswith(PRODUCT_LIST_AVAILABILITY_PREFIX)), None)
+        if "product_code" not in fields or avail_col is None:
+            raise ValueError(f"{path.name}: not a Fresho product-list export "
+                             f"(needs product_code and availability columns)")
+        for raw in reader:
+            code = _clean_code(raw["product_code"])
+            status = (raw[avail_col] or "").strip().lower()
+            if code and status:
+                statuses[code] = status
+    known = {r.product_code for r in conn.execute(sa.select(db.products.c.product_code))}
+    counts: dict[str, int] = {}
+    for code, status in statuses.items():
+        if code not in known:
+            continue
+        conn.execute(db.products.update().where(db.products.c.product_code == code)
+                     .values(availability=status, availability_as_of=as_of))
+        counts[status] = counts.get(status, 0) + 1
+    log.info("%s: availability as of %s for %d catalogue products %s "
+             "(%d listed products not yet in the catalogue)", path.name, as_of,
+             sum(counts.values()), dict(sorted(counts.items())),
+             len(set(statuses) - known))
+    return counts
+
+
 if __name__ == "__main__":
     # python ingest.py values <file-or-folder>...  - load GP-margin exports
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if len(sys.argv) == 3 and sys.argv[1] == "productlist":
+        with db.init_db().begin() as conn:
+            print(ingest_product_list_file(conn, Path(sys.argv[2])))
+        sys.exit(0)
     if len(sys.argv) < 3 or sys.argv[1] != "values":
-        sys.exit("usage: python ingest.py values <file-or-folder>...")
+        sys.exit("usage: python ingest.py values <file-or-folder>...\n"
+                 "       python ingest.py productlist <file>")
     files = []
     for arg in map(Path, sys.argv[2:]):
         files += sorted(arg.glob(config.VALUES_FILE_GLOB)) if arg.is_dir() else [arg]

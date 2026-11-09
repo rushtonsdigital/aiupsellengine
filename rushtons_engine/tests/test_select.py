@@ -346,6 +346,35 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
     assert "NEWBIE" in codes
 
 
+def test_selection_limited_to_named_reps(conn, monkeypatch):
+    """Hannah 2026-10-28: only Harry's and Laurence's books go into the pull;
+    other reps' accounts are held, not Excluded (they stay on the dashboard)."""
+    _seed_catalogue(conn)
+    monkeypatch.setattr(config, "SELECTION_SALES_REPS",
+                        {"harry (rushtons)", "laurence (rushtons)"})
+    reps = {"HARRY": "Harry (Rushtons)", "LAURENCE": "laurence (Rushtons) ",
+            "BEN": "Ben (Rushtons)", "NOREP": None}
+    for code, rep in reps.items():
+        add_customer(conn, code, sales_rep=rep)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert codes == {"HARRY", "LAURENCE"}
+    prestige = {r.customer_code: r.prestige for r in conn.execute(sa.select(db.customers))}
+    assert prestige["BEN"] != "Excluded"
+
+
+def test_dead_accounts_held_from_selection(conn):
+    """Jose 2026-11-02: Fresho stage 'dead' = a lost account (Padella Shoreditch)."""
+    _seed_catalogue(conn)
+    for code in ("ALIVE", "LOST"):
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["VEG-1"], AS_OF - dt.timedelta(days=150), weeks=22)
+    conn.execute(db.customers.update().where(db.customers.c.customer_code == "LOST")
+                 .values(account_stage="Dead"))
+    codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    assert "ALIVE" in codes and "LOST" not in codes
+
+
 def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     """The month's seasonal list: 'out' lines never reach the pool, 'peak'
     lines lead it (even with no recent buyers) and carry the flag + note."""
@@ -371,6 +400,27 @@ def test_seasonal_list_floats_peak_and_drops_out(conn, monkeypatch, tmp_path):
     assert pool[0]["season_note"] == "the season of Delica"
     assert "Mushrooms - Girolles Scottish" not in names
     assert "season" not in pool[names.index("Carrots")]
+
+
+def test_seasonal_pool_offers_peak_lines_not_yet_bought(conn, monkeypatch, tmp_path):
+    """Laurence 2026-10-28: 7-8 options per account. Peak lines from categories
+    the account already buys join the pool - minus anything it already buys."""
+    import seasonal
+    (tmp_path / f"seasonal_{AS_OF:%Y-%m}.csv").write_text(
+        "pattern,status,note,source\n^cabbage black cavolo nero,peak,cavolo,Laurence\n"
+        "^kohlrabi,peak,kohlrabi,Laurence\n", encoding="utf-8")
+    monkeypatch.setattr(config, "SEASONAL_DIR", tmp_path)
+    monkeypatch.setattr(config, "TARGETABLE_CATEGORIES", ["Vegetables", "Fruits"])
+    seasonal.rules_for.cache_clear()
+    add_product(conn, "VEG-CAV", name="Cabbage Black Cavolo Nero")
+    add_product(conn, "VEG-KOH-EA", name="Kohlrabi")
+    add_product(conn, "VEG-ONI", name="Onions - Brown")
+    try:
+        pool = sel.build_seasonal_pool(conn, AS_OF, {"VEG-KOH-EA"}, skip={"Fruits"})
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert [p["name"] for p in pool] == ["Cabbage Black Cavolo Nero"]
+    assert pool[0]["category"] == "Vegetables"
 
 
 def test_accounts_with_only_prep_gaps_are_skipped(conn, monkeypatch):
@@ -404,3 +454,127 @@ def test_no_more_than_max_accounts_per_group(conn, monkeypatch):
     assert len(codes & {"G1", "G2", "G3"}) == 2
     assert "SOLO" in codes
     assert {"STAR1", "STAR2", "STAR3"} <= codes   # '*' means no group
+
+
+def _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines):
+    """Two fully-covered accounts (buy Vegetables + Fruits, the only targetable
+    categories) and one with a real gap; `peak_lines` peak Vegetables lines
+    nobody in the fully-covered pair has bought."""
+    import seasonal
+    rules = "pattern,status,note,source\n" + "".join(
+        f"^peak line {i}$,peak,note {i},test\n" for i in range(peak_lines))
+    (tmp_path / f"seasonal_{AS_OF:%Y-%m}.csv").write_text(rules, encoding="utf-8")
+    monkeypatch.setattr(config, "SEASONAL_DIR", tmp_path)
+    monkeypatch.setattr(config, "TARGETABLE_CATEGORIES", ["Vegetables", "Fruits", "Dairy and Chilled"])
+    monkeypatch.setattr(config, "SEASONAL_FALLBACK_MIN_ITEMS", 3)
+    seasonal.rules_for.cache_clear()
+    _seed_catalogue(conn)
+    for i in range(peak_lines):
+        add_product(conn, f"PK-{i}", name=f"Peak Line {i}", category="Vegetables")
+    for code in ("FULL1", "FULL2"):
+        add_customer(conn, code)
+        weekly_orders(conn, code, ["VEG-1", "FRU-1", "DAI-1"], START, weeks=5)
+    add_customer(conn, "GAPPY")
+    weekly_orders(conn, "GAPPY", ["VEG-1"], START, weeks=5)
+
+
+def test_seasonal_fallback_fills_only_empty_slots(conn, monkeypatch, tmp_path):
+    """Jose 2026-11-09: accounts with no gap worth pitching get a 'what's new in
+    season' pitch - but only when the normal pull leaves the list short."""
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    try:
+        recs = _classify_and_select(conn)
+    finally:
+        seasonal.rules_for.cache_clear()
+    by_code = {r["customer_code"]: r for r in recs}
+    assert recs[0]["customer_code"] == "GAPPY"          # gap accounts lead
+    assert by_code["GAPPY"]["pitch_type"] == "gap"
+    for code in ("FULL1", "FULL2"):                      # slots were free
+        r = by_code[code]
+        assert r["pitch_type"] == "seasonal" and r["gap_categories"] == []
+        assert list(r["product_pool"]) == [config.SEASONAL_POOL_KEY]
+        assert {p["name"] for p in r["product_pool"][config.SEASONAL_POOL_KEY]} \
+            == {f"Peak Line {i}" for i in range(4)}
+
+
+def test_seasonal_fallback_never_displaces_gap_accounts(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    monkeypatch.setattr(config, "TOP_N", 1)
+    try:
+        codes = [r["customer_code"] for r in _classify_and_select(conn)]
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert codes == ["GAPPY"]
+
+
+def test_seasonal_fallback_needs_enough_new_peak_lines(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=2)  # < min 3
+    try:
+        codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert "GAPPY" in codes and not codes & {"FULL1", "FULL2"}
+
+
+def test_seasonal_fallback_can_be_switched_off(conn, monkeypatch, tmp_path):
+    import seasonal
+    _seasonal_fallback_setup(conn, monkeypatch, tmp_path, peak_lines=4)
+    monkeypatch.setattr(config, "SEASONAL_FALLBACK", False)
+    try:
+        codes = {r["customer_code"] for r in _classify_and_select(conn)}
+    finally:
+        seasonal.rules_for.cache_clear()
+    assert "GAPPY" in codes and not codes & {"FULL1", "FULL2"}
+
+
+def _product_list(tmp_path, rows, name="x_product_list_with_level_prices_20261108-0900.csv"):
+    path = tmp_path / name
+    lines = ["product_code,product_name (do not edit),cost,Base Price List,"
+             "\"availability (available, limited, unavailable, or hidden)\""]
+    lines += [f"'{code}',{code} name,1.00,2.00,{status}" for code, status in rows]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_product_list_loads_availability_and_never_prices(conn, tmp_path):
+    """2026-11-09: Fresho's availability (kept by Jo) is the weekly signal the
+    monthly report missed (ceps). Only code + availability are stored."""
+    import ingest
+    add_product(conn, "4615-KG", name="Mushroom - Cepes")
+    add_product(conn, "3775-KG", name="Quince")
+    counts = ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("4615-KG", "limited"), ("3775-KG", "available"), ("9999-EA", "hidden")]))
+    assert counts == {"limited": 1, "available": 1}          # unknown code not added
+    rows = {r.product_code: r for r in conn.execute(sa.select(db.products))}
+    assert rows["4615-KG"].availability == "limited"
+    assert rows["4615-KG"].availability_as_of == dt.date(2026, 11, 8)
+    assert "9999-EA" not in rows
+    assert not {"cost", "base_price_list"} & set(db.products.c.keys())
+
+
+def test_pool_skips_limited_unavailable_and_hidden_lines(conn, tmp_path):
+    import ingest
+    for code, name in (("A-1", "Available Line"), ("L-1", "Limited Line"),
+                       ("U-1", "Unavailable Line"), ("H-1", "Hidden Line"),
+                       ("N-1", "Not In List Line")):
+        add_product(conn, code, name=name, category="Mushroom")
+    ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("A-1", "available"), ("L-1", "limited"),
+                   ("U-1", "unavailable"), ("H-1", "hidden")]))
+    names = {p["name"] for p in sel.build_product_pool(conn, "Mushroom", AS_OF, set())}
+    assert names == {"Available Line", "Not In List Line"}   # absent = unknown, kept
+
+
+def test_stale_or_missing_availability_warns(conn, tmp_path, caplog):
+    import ingest
+    add_product(conn, "A-1")
+    assert sel.check_availability_freshness(conn, AS_OF) is None
+    assert "no Fresho product list loaded" in caplog.text
+    ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("A-1", "available")], name="p_product_list_20260601-0900.csv"))
+    caplog.clear()
+    assert sel.check_availability_freshness(conn, AS_OF) == dt.date(2026, 6, 1)
+    assert "days old" in caplog.text

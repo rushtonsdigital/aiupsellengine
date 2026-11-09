@@ -132,8 +132,11 @@ def selection_holds(custs: dict, stats: dict, as_of: date) -> set[str]:
     held = set(config.HOLD_CUSTOMER_CODES)
     for code, c in custs.items():
         name = (c.customer_name or "").strip().casefold()
+        rep = (c.sales_rep or "").strip().casefold()
         if (c.venue_type in config.PARKED_VENUE_TYPES
-                or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)):
+                or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)
+                or (config.SELECTION_SALES_REPS and rep not in config.SELECTION_SALES_REPS)
+                or (c.account_stage or "").strip().casefold() in config.HOLD_ACCOUNT_STAGES):
             held.add(code)
     window_open = min((s["first_order"] for s in stats.values()), default=as_of)
     # An account trading in the first fortnight of our data predates the
@@ -232,6 +235,7 @@ def build_product_pool(conn, category: str, as_of: date,
             db.products.c.product_name,
             db.products.c.raw_product_group,
             db.products.c.last_seen,
+            db.products.c.availability,
             sa.func.coalesce(recent.c.buyers, 0).label("buyers"))
          .select_from(db.products.outerjoin(
              recent, db.products.c.product_code == recent.c.product_code))
@@ -246,6 +250,10 @@ def build_product_pool(conn, category: str, as_of: date,
     for r in conn.execute(q):
         base = base_code(r.product_code)
         if base in excluded_bases:
+            continue
+        # Fresho's live availability (weekly product list): limited, unavailable
+        # or hidden lines are never pitched - this is what caught ceps (2 Nov).
+        if (r.availability or "").lower() in config.UNPITCHABLE_AVAILABILITY:
             continue
         # This month's seasonal list (seasonal.py): 'out' lines never reach the
         # pool; 'peak' lines are flagged for the drafter and lead the pool.
@@ -272,10 +280,45 @@ def build_product_pool(conn, category: str, as_of: date,
     return ranked[:config.POOL_PER_GAP]
 
 
+def build_seasonal_pool(conn, as_of: date, exclude_skus: set[str],
+                        skip: set[str]) -> list[dict]:
+    """Peak-season lines the account has never bought, from categories it
+    DOES already buy (gap categories have their own pool, `skip`).
+
+    Gap categories alone left some accounts with one category to choose 6-8
+    products from (a bakery: mushrooms only). Laurence 2026-10-27/28 built his
+    boxes from exactly this - cavolo nero, quince, kohlrabi, Roscoff onions for
+    kitchens that already buy veg - checking each account's orders by hand.
+    """
+    items = []
+    for category in config.TARGETABLE_CATEGORIES:
+        if category in skip:
+            continue
+        items += [dict(p, category=category)
+                  for p in build_product_pool(conn, category, as_of, exclude_skus)
+                  if p.get("season") == "peak"]
+    items.sort(key=lambda p: (-p["buyers_14d"], p["code"]))
+    return items[:config.SEASONAL_POOL_SIZE]
+
+
+def check_availability_freshness(conn, as_of: date) -> date | None:
+    """Warn when Fresho availability is missing or stale - pools then rely on
+    the monthly seasonal list alone. Returns the newest availability date."""
+    latest = conn.execute(sa.select(sa.func.max(db.products.c.availability_as_of))).scalar()
+    if latest is None:
+        log.warning("no Fresho product list loaded - limited/unavailable lines "
+                    "are NOT being filtered (download Products > Export weekly)")
+    elif (as_of - latest).days > config.AVAILABILITY_MAX_AGE_DAYS:
+        log.warning("Fresho availability is %d days old (product list of %s) - "
+                    "download a fresh one", (as_of - latest).days, latest)
+    return latest
+
+
 def select_top(conn, run_date: date | None = None) -> list[dict]:
     """Rank candidates and persist the top N to recommendations.
     Re-running for the same run_date replaces that run's rows (idempotent)."""
     as_of = run_date or as_of_date(conn)
+    check_availability_freshness(conn, as_of)
     stats = classify.customer_order_stats(conn)
     cats = _customer_categories(conn, config.GAP_LOOKBACK_DAYS, as_of)
     skus = _customer_skus(conn)
@@ -300,7 +343,7 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
     span_days = (as_of - min(s["first_order"] for s in stats.values())).days + 1
     span_weeks = max(span_days / 7.0, 1.0)
 
-    candidates = []
+    candidates, seasonal_candidates = [], []
     for code, s in stats.items():
         c = custs.get(code)
         if c is None or c.activity_status not in ACTIVE_STATUSES:
@@ -318,14 +361,21 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         if code in cooldown or code in parents:
             continue
         gaps, ordered_gaps = detect_gaps(cats.get(code, set()), c.venue_type)
-        if not ordered_gaps:
-            continue  # buys across every targetable category — nothing to pitch
         real_gaps = [g for g in gaps if g not in config.PREP_ONLY_GAP_CATEGORIES]
-        if len(real_gaps) < config.MIN_REAL_GAP_CATEGORIES:
-            continue  # only prepped lines left to pitch - not worth a slot
         orders_per_week = s["num_orders"] / span_weeks
         avg_lines = s["num_lines"] / s["num_orders"]
         score = score_candidate(orders_per_week, len(gaps), c.venue_type, avg_lines)
+        if not ordered_gaps or len(real_gaps) < config.MIN_REAL_GAP_CATEGORIES:
+            # Buys across every targetable category, or only prepped lines are
+            # missing - no gap worth a slot. Kept aside for the "new in season"
+            # fallback, which only fills slots the gap pull leaves empty.
+            seasonal_candidates.append({
+                "customer_code": code, "customer": c, "stats": s,
+                "gaps": gaps, "ordered_gaps": [], "score": score,
+                "total_qty_rank": s["num_lines"], "pitch": "seasonal",
+                "sku_count": sku_count, "cat_count": cat_count,
+            })
+            continue
         candidates.append({
             "customer_code": code, "customer": c, "stats": s,
             "gaps": gaps, "ordered_gaps": ordered_gaps, "score": score,
@@ -346,17 +396,42 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         candidates.sort(key=lambda x: (-x["score"], -x["total_qty_rank"],
                                        x["customer_code"]))
     top, per_group = [], {}
-    for cand in candidates:
+
+    def _take(cand) -> bool:
         group = (cand["customer"].group_affiliation or "").strip().casefold()
         if not any(ch.isalnum() for ch in group):
             group = ""  # Fresho uses '*' (or blank) for "no group"
         if group and per_group.get(group, 0) >= config.MAX_ACCOUNTS_PER_GROUP:
-            continue
+            return False
         top.append(cand)
         if group:
             per_group[group] = per_group.get(group, 0) + 1
+        return True
+
+    for cand in candidates:
         if len(top) == config.TOP_N:
             break
+        _take(cand)
+
+    # "What's new in season" fallback - only for slots the gap pull left empty.
+    # Most engaged first; an account qualifies only if enough peak lines it has
+    # never bought exist to fill a shortlist.
+    if config.SEASONAL_FALLBACK and len(top) < config.TOP_N and seasonal_candidates:
+        seasonal_candidates.sort(key=lambda x: (-x["score"], -x["total_qty_rank"],
+                                                x["customer_code"]))
+        added = 0
+        for cand in seasonal_candidates:
+            if len(top) == config.TOP_N:
+                break
+            items = build_seasonal_pool(conn, as_of, skus.get(cand["customer_code"], set()),
+                                        skip=set())
+            if len(items) < config.SEASONAL_FALLBACK_MIN_ITEMS:
+                continue
+            cand["seasonal_items"] = items
+            added += _take(cand)
+        log.info("seasonal fallback: %d gap-pull account(s), %d added from %d "
+                 "fully-covered account(s) with new in-season lines",
+                 len(top) - added, added, len(seasonal_candidates))
 
     # Re-running select_top for a run_date that already has locked recommendations
     # must not disturb rows that comms already reference (FK) or reset a status a
@@ -388,23 +463,41 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
         code = cand["customer_code"]
         # Offer every gap category with stock, in relevance order, up to the cap.
         # Code no longer picks WHICH categories to pitch — step 3 does, from this.
-        pool = {}
-        for gap in cand["ordered_gaps"]:
-            items = build_product_pool(conn, gap, as_of, skus.get(code, set()))
-            if items:
-                pool[gap] = items
-            if len(pool) >= config.MAX_GAP_CATEGORIES_OFFERED:
-                break
-        offered_cats = list(pool)
-        rationale = (
-            f"{c.venue_type}; {c.activity_status}; {s['num_orders']} orders "
-            f"({s['num_orders'] / span_weeks:.1f}/wk), "
-            f"{len(skus.get(code, ()))} SKUs across "
-            f"{len(cats.get(code, ()))} categories; "
-            f"missing {len(cand['gaps'])}/{len(config.TARGETABLE_CATEGORIES)} "
-            f"targetable categories. Offered (drafter picks): "
-            f"{', '.join(offered_cats)}."
-        )
+        if cand.get("pitch") == "seasonal":
+            # "New in season" fallback: no gap category - only peak lines it
+            # has never bought, from the categories it already buys.
+            pool = {config.SEASONAL_POOL_KEY: cand["seasonal_items"]}
+            offered_cats = []
+            rationale = (
+                f"NEW IN SEASON (fallback - buys across every category worth "
+                f"pitching): {c.venue_type}; {c.activity_status}; "
+                f"{s['num_orders']} orders ({s['num_orders'] / span_weeks:.1f}/wk), "
+                f"{len(skus.get(code, ()))} SKUs across "
+                f"{len(cats.get(code, ()))} categories. Offered only peak-season "
+                f"lines it has never bought (drafter picks)."
+            )
+        else:
+            pool = {}
+            for gap in cand["ordered_gaps"]:
+                items = build_product_pool(conn, gap, as_of, skus.get(code, set()))
+                if items:
+                    pool[gap] = items
+                if len(pool) >= config.MAX_GAP_CATEGORIES_OFFERED:
+                    break
+            offered_cats = list(pool)
+            seasonal_items = build_seasonal_pool(conn, as_of, skus.get(code, set()),
+                                                 skip=set(pool))
+            if seasonal_items:
+                pool[config.SEASONAL_POOL_KEY] = seasonal_items
+            rationale = (
+                f"{c.venue_type}; {c.activity_status}; {s['num_orders']} orders "
+                f"({s['num_orders'] / span_weeks:.1f}/wk), "
+                f"{len(skus.get(code, ()))} SKUs across "
+                f"{len(cats.get(code, ()))} categories; "
+                f"missing {len(cand['gaps'])}/{len(config.TARGETABLE_CATEGORIES)} "
+                f"targetable categories. Offered (drafter picks): "
+                f"{', '.join(offered_cats)}."
+            )
         # product_pool is code's output (step 2). chosen_products is the
         # drafter's pick from it (step 3) and stays None until apply_drafts.
         values = dict(run_date=as_of, customer_code=code, rank=rank,
@@ -431,8 +524,10 @@ def select_top(conn, run_date: date | None = None) -> list[dict]:
             "gap_categories": offered_cats,
             "all_gaps": cand["gaps"],
             "product_pool": pool,
+            "pitch_type": cand.get("pitch", "gap"),
             "rationale": rationale,
         })
-    log.info("selected %d of %d candidates for %s",
-             len(results), len(candidates), as_of)
+    log.info("selected %d of %d candidates for %s (+%d fully-covered accounts "
+             "considered for the seasonal fallback)",
+             len(results), len(candidates), as_of, len(seasonal_candidates))
     return results

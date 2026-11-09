@@ -6,6 +6,7 @@ Run date (Monday): ____________  Last order date loaded (o): ____________
 - [ ] 1. Feedback reviewed (Gmail since last run, Fireflies, Drive) → rules/feedback-logs updated, tests pass
 - [ ] 2a. Fresho operational report: Product Totals By Customer, CSV, (o+1) → Sunday
 - [ ] 2b. Fresho GP report: month-to-date CSV (+ previous full month in week 1 of a month)
+- [ ] 2d. Fresho product list (Products > Export CSV) - EVERY week: live availability
 - [ ] 2c. (monthly / when asked) Fresho customer master
 - [ ] Downloads verified: dates after o, all invoiced, GP file > 125 bytes
 - [ ] 3. `run_weekly.py --data-dir <run folder> --run-date <Monday>` → 15 selected

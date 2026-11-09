@@ -76,3 +76,43 @@ already ordering grapefruit - so I changed that to Miyagawa."* The pool only rem
 the exact product they buy, not other forms of it. Before picking a prepped or
 variant line (segments, juice, diced), check `currently_buys` / their top products
 for the base fruit or veg - if they already buy it, pick something genuinely new.
+
+## 2026-10-27/28 — Wider shortlist (6-8), additional box products, and real variety (Laurence)
+
+Laurence, 27 Oct: *"the suggested produce is very repetitive namely Delica Squash and
+beetroot. I get that these products are in season, but there are plenty more that could be
+suggested instead/as well as."* He rebuilt every box by hand from each account's last month of
+orders, which *"has taken quite a while"*, and asked for an "additional products" column — *"bits
+we're going to send that we haven't included in the message"*. 28 Oct, on how many: *"I think 7 or
+8 would be fine!"*
+
+His own boxes for the 26 Oct list are the calibration set for November variety:
+Starfish & Coffee (Delica, candy beetroot, kales, Roscoff onions, figs); Tempo (baby artichokes,
+kohlrabi, peeled ginger, hispi cabbage); Faber (Miyagawa, golden + candy beetroot, figs, Roscoff
+onions); Banya (Delica, candy beetroot, kohlrabi, cultivated mushroom mix); The Atlas (baby
+artichokes, cicoria, purple sprouting broccoli, heritage carrots, candy + golden beetroot); Fox &
+Hounds (quince, friggitelli peppers, Delica, cavolo nero, salsify); Bird in Hand (quince, micro
+basil, nasturtium flowers, cavolo nero, figs). Two misses he caught: lime leaves to Tempo and baby
+leeks to Faber — both already buy them (or the full-size version).
+
+What changes:
+- **Shortlist 6-8 products per account** (`config.MIN/MAX_CHOSEN_PRODUCTS`), spread across
+  categories, each with a `why`. Fewer only if fewer genuinely fit (logged as a warning).
+- **Mark 2-4 of them `in_message: true`** — the ones the WhatsApp message names. The rest are the
+  "Additional Products (box only)" tracker column. The message stays short.
+- **Variety across the week**: one product can be named in at most 3 accounts' messages
+  (`MAX_SAME_PRODUCT_IN_MESSAGES`, enforced by apply_drafts). Squash and beetroot are no longer
+  flagged peak in November — still pickable, never the default.
+- **Check each account's actual product history** (last 3 months, product level — not just
+  `currently_buys` categories) before picking: no product they already buy in any form or size.
+
+## 2026-11-04 — Ceps were short; Fresho already said so (Laurence, Jo)
+
+Ceps went into two 2 Nov messages (Big Jo Bakery, Duchy) and two box-only lists. Laurence:
+*"Cepes are pretty much out of season and in very short supply – they are listed at limited on
+Fresho."* Jo: *"some ceps have started popping up in France so supply should be better soon!"*
+The November list had flagged ceps `peak` (and the Nov market report lists them), so the monthly
+sources missed it. Ceps are now `out` for November; trompettes de-flagged (also "limited" on
+Fresho). Lesson: Fresho's own availability status (available / limited / unavailable / hidden,
+maintained by Jo) is the faster signal - never pitch a line Fresho shows as limited, and say so
+in `data_notes` if one reaches the pool.

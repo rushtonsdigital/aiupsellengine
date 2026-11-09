@@ -96,6 +96,15 @@ buyer side — switch to Rushton's). Files land in `C:\Users\goodb\Downloads`.
   "Download Report" → Close.
 - File: `rushtons-greengrocers_sales_gp_margin_<start>_<end>.csv`.
 
+**d. Product list - EVERY week (live availability)** — Fresho → Products → *Product Pricing &
+Availability* tab → **Export/Import ▾ → Export CSV** (never Import) → wait for "Done." → click the
+`rushtons-greengrocers_product_list_with_level_prices_<YYYYMMDD-HHMM>.csv` link → close. The engine
+reads only `product_code` + `availability` (available / limited / unavailable / hidden, kept by Jo)
+and keeps limited, unavailable and hidden lines out of every pool — this is the weekly "in season /
+in supply" signal the monthly market report can't give (ceps, 2 Nov). The file also holds cost and
+price levels: keep it in the scratch run folder only, never in the repo. A run without a fresh list
+logs a warning and falls back to the monthly seasonal list alone.
+
 **c. Customer master (when asked, or monthly)** — Fresho → Customers → Export. Fixes missing
 account managers / venue types on new accounts (stub accounts are `account_stage = 'new (auto)'`).
 Only ever load the newest master.
@@ -168,8 +177,13 @@ never from memory). Read `output/drafting_brief_<Monday>.json` (write a compact 
 the scratchpad to read it; pools are large).
 
 - **Live web search of every venue** (15 searches, run in parallel) → `customer_review`.
-- Pick up to 5 products from the account's pool; prefer `"season": "peak"` lines; drop gap
-  categories that don't fit; one-line `why` each. Bars get bar-relevant lines only.
+- Shortlist 6-8 products from the account's pool (incl. its "Seasonal - not yet bought"
+  section); prefer `"season": "peak"` lines; drop gap categories that don't fit; one-line
+  `why` each. Mark the 2-4 the message names `in_message: true` - the rest are the tracker's
+  "Additional Products (box only)" (Laurence 2026-10-28). Check each account's product-level
+  order history first: nothing they already buy in any form. Vary across the list - no product
+  named in more than 3 messages (apply_drafts enforces it; aim for 2). Bars get bar-relevant
+  lines only.
 - Two message options (A with one dish idea, B simple, season-led). Follow-up is the
   definite send: "we're sending a few bits over tomorrow for you to try - x, y, z".
 - `data_notes` for mis-typed venues, missing reps, groups, anything to fix at source.
