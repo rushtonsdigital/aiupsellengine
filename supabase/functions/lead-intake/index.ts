@@ -563,10 +563,10 @@ ${leadLink ? `<p><a href="${esc(leadLink)}">Open the lead page</a></p>` : ""}
     method: "POST",
     headers: { "Authorization": `Bearer ${key}`,
                "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from, to, subject, text, html,
-      ...(lead.email ? { reply_to: lead.email } : {}),
-    }),
+    // Reply-To is the team, never the lead. It was the lead's address until
+    // 7 Nov 2026, so "Reply all" on a notification sent the internal
+    // research to the lead (the Rhythm 108 incident).
+    body: JSON.stringify({ from, to, subject, text, html, reply_to: to }),
   });
   if (!resp.ok) throw new Error(`Resend ${resp.status}: ${await resp.text()}`);
   return true;
