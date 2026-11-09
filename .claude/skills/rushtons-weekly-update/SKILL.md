@@ -96,6 +96,15 @@ buyer side — switch to Rushton's). Files land in `C:\Users\goodb\Downloads`.
   "Download Report" → Close.
 - File: `rushtons-greengrocers_sales_gp_margin_<start>_<end>.csv`.
 
+**d. Product list - EVERY week (live availability)** — Fresho → Products → *Product Pricing &
+Availability* tab → **Export/Import ▾ → Export CSV** (never Import) → wait for "Done." → click the
+`rushtons-greengrocers_product_list_with_level_prices_<YYYYMMDD-HHMM>.csv` link → close. The engine
+reads only `product_code` + `availability` (available / limited / unavailable / hidden, kept by Jo)
+and keeps limited, unavailable and hidden lines out of every pool — this is the weekly "in season /
+in supply" signal the monthly market report can't give (ceps, 2 Nov). The file also holds cost and
+price levels: keep it in the scratch run folder only, never in the repo. A run without a fresh list
+logs a warning and falls back to the monthly seasonal list alone.
+
 **c. Customer master (when asked, or monthly)** — Fresho → Customers → Export. Fixes missing
 account managers / venue types on new accounts (stub accounts are `account_stage = 'new (auto)'`).
 Only ever load the newest master.

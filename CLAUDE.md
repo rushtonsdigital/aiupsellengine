@@ -109,6 +109,13 @@ Notes:
 - If ingest fails on an unknown product group, add it deliberately to
   `rushtons_engine/categories.py` (never bucket silently) and mention it to
   the user.
+- **Live availability (weekly):** the Fresho product list (Products > Export CSV,
+  `*product_list*.csv`) goes in the `--data-dir` every week; `run_weekly.py` loads only
+  code + availability, and limited / unavailable / hidden lines never reach a pool
+  (`config.UNPITCHABLE_AVAILABILITY`). One-off: `python ingest.py productlist <file>`.
+  The monthly seasonal list says what to push; Fresho availability says what's actually there.
+- **Seasonal fallback:** when the gap-based pull leaves slots empty, fully-covered accounts
+  fill them with a 'new in season' pitch (peak lines never bought) - `config.SEASONAL_FALLBACK`.
 - **Seasonal list (monthly):** `rushtons_engine/seasonal/seasonal_YYYY-MM.csv`
   (regex `pattern`, `status` peak|out, `note`, `source`) — peak lines lead each
   product pool and are flagged; out lines are dropped. Write the next month's

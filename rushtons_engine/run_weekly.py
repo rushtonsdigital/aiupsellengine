@@ -69,6 +69,15 @@ def run(data_dir: Path, drafts_file: Path | None = None,
                 log.warning("no customer master export in %s - using existing customers", data_dir)
             total = sum(ingest.ingest_orders_file(conn, f) for f in order_files)
             log.info("ingested %d order lines from %d files", total, len(order_files))
+            # Fresho availability (limited / unavailable / hidden lines are never
+            # pitched): newest product-list export in the folder.
+            product_lists = sorted(data_dir.glob(config.PRODUCT_LIST_FILE_GLOB),
+                                   key=ingest.product_list_date)
+            if product_lists:
+                ingest.ingest_product_list_file(conn, product_lists[-1])
+            else:
+                log.warning("no Fresho product list in %s - availability not refreshed",
+                            data_dir)
             # £ sales / GP: optional, one calendar month (or month to date) per file.
             value_files = sorted(data_dir.glob(config.VALUES_FILE_GLOB))
             if value_files:

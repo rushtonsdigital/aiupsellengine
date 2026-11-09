@@ -372,6 +372,19 @@ CUSTOMERS_FILE_GLOB = "*customers_*.csv"
 # Fresho Sell > Reports > "Sales Totals and Gross Profit Margin", CSV, one
 # calendar month (or month to date) per file.
 VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
+# Fresho Products > Export ("product list with level prices"), downloaded every
+# week. Only product_code + availability are read - never the price columns.
+PRODUCT_LIST_FILE_GLOB = "*product_list*.csv"
+
+# --- live availability (2026-11-09) ----------------------------------------------
+# The monthly market report missed short supply (ceps, 2 Nov) and arrives after
+# the month's first run; Fresho's availability field (kept by Jo) already showed
+# ceps and Scottish girolles as "limited". Lines Fresho shows with these
+# statuses never reach a product pool. A product absent from the list stays
+# pitchable (unknown, not unavailable).
+UNPITCHABLE_AVAILABILITY = {"limited", "unavailable", "hidden"}
+# Warn when the newest product list loaded is older than this (or missing).
+AVAILABILITY_MAX_AGE_DAYS = 10
 
 # --- leads pipeline (dashboard Leads + Follow-ups) -----------------------------
 # Funnel stages in order: (stored value, label on the page). Acquired/Discarded

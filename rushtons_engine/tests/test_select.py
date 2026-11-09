@@ -528,3 +528,53 @@ def test_seasonal_fallback_can_be_switched_off(conn, monkeypatch, tmp_path):
     finally:
         seasonal.rules_for.cache_clear()
     assert "GAPPY" in codes and not codes & {"FULL1", "FULL2"}
+
+
+def _product_list(tmp_path, rows, name="x_product_list_with_level_prices_20261108-0900.csv"):
+    path = tmp_path / name
+    lines = ["product_code,product_name (do not edit),cost,Base Price List,"
+             "\"availability (available, limited, unavailable, or hidden)\""]
+    lines += [f"'{code}',{code} name,1.00,2.00,{status}" for code, status in rows]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_product_list_loads_availability_and_never_prices(conn, tmp_path):
+    """2026-11-09: Fresho's availability (kept by Jo) is the weekly signal the
+    monthly report missed (ceps). Only code + availability are stored."""
+    import ingest
+    add_product(conn, "4615-KG", name="Mushroom - Cepes")
+    add_product(conn, "3775-KG", name="Quince")
+    counts = ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("4615-KG", "limited"), ("3775-KG", "available"), ("9999-EA", "hidden")]))
+    assert counts == {"limited": 1, "available": 1}          # unknown code not added
+    rows = {r.product_code: r for r in conn.execute(sa.select(db.products))}
+    assert rows["4615-KG"].availability == "limited"
+    assert rows["4615-KG"].availability_as_of == dt.date(2026, 11, 8)
+    assert "9999-EA" not in rows
+    assert not {"cost", "base_price_list"} & set(db.products.c.keys())
+
+
+def test_pool_skips_limited_unavailable_and_hidden_lines(conn, tmp_path):
+    import ingest
+    for code, name in (("A-1", "Available Line"), ("L-1", "Limited Line"),
+                       ("U-1", "Unavailable Line"), ("H-1", "Hidden Line"),
+                       ("N-1", "Not In List Line")):
+        add_product(conn, code, name=name, category="Mushroom")
+    ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("A-1", "available"), ("L-1", "limited"),
+                   ("U-1", "unavailable"), ("H-1", "hidden")]))
+    names = {p["name"] for p in sel.build_product_pool(conn, "Mushroom", AS_OF, set())}
+    assert names == {"Available Line", "Not In List Line"}   # absent = unknown, kept
+
+
+def test_stale_or_missing_availability_warns(conn, tmp_path, caplog):
+    import ingest
+    add_product(conn, "A-1")
+    assert sel.check_availability_freshness(conn, AS_OF) is None
+    assert "no Fresho product list loaded" in caplog.text
+    ingest.ingest_product_list_file(conn, _product_list(
+        tmp_path, [("A-1", "available")], name="p_product_list_20260601-0900.csv"))
+    caplog.clear()
+    assert sel.check_availability_freshness(conn, AS_OF) == dt.date(2026, 6, 1)
+    assert "days old" in caplog.text

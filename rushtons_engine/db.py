@@ -58,6 +58,10 @@ products = sa.Table(
     sa.Column("category", sa.Text),
     sa.Column("out_of_season", sa.Boolean, default=False),
     sa.Column("delisted", sa.Boolean, default=False),
+    # Fresho's own availability (available / limited / unavailable / hidden),
+    # from the weekly product-list export; NULL = not in a list yet (unknown).
+    sa.Column("availability", sa.Text),
+    sa.Column("availability_as_of", sa.Date),
     sa.Column("first_seen", sa.Date),
     sa.Column("last_seen", sa.Date),
     sa.Column("updated_at", sa.DateTime(timezone=True)),
@@ -494,6 +498,11 @@ def _migrate_products(engine: sa.Engine) -> None:
         with engine.begin() as conn:
             conn.execute(sa.text(
                 "alter table products add column delisted boolean default false"))
+    # 2026-11-09: Fresho availability from the weekly product-list export.
+    for col, typ in (("availability", "text"), ("availability_as_of", "date")):
+        if col not in cols:
+            with engine.begin() as conn:
+                conn.execute(sa.text(f"alter table products add column {col} {typ}"))
 
 
 def _migrate_recommendations(engine: sa.Engine) -> None:

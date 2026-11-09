@@ -235,6 +235,7 @@ def build_product_pool(conn, category: str, as_of: date,
             db.products.c.product_name,
             db.products.c.raw_product_group,
             db.products.c.last_seen,
+            db.products.c.availability,
             sa.func.coalesce(recent.c.buyers, 0).label("buyers"))
          .select_from(db.products.outerjoin(
              recent, db.products.c.product_code == recent.c.product_code))
@@ -249,6 +250,10 @@ def build_product_pool(conn, category: str, as_of: date,
     for r in conn.execute(q):
         base = base_code(r.product_code)
         if base in excluded_bases:
+            continue
+        # Fresho's live availability (weekly product list): limited, unavailable
+        # or hidden lines are never pitched - this is what caught ceps (2 Nov).
+        if (r.availability or "").lower() in config.UNPITCHABLE_AVAILABILITY:
             continue
         # This month's seasonal list (seasonal.py): 'out' lines never reach the
         # pool; 'peak' lines are flagged for the drafter and lead the pool.
@@ -296,10 +301,24 @@ def build_seasonal_pool(conn, as_of: date, exclude_skus: set[str],
     return items[:config.SEASONAL_POOL_SIZE]
 
 
+def check_availability_freshness(conn, as_of: date) -> date | None:
+    """Warn when Fresho availability is missing or stale - pools then rely on
+    the monthly seasonal list alone. Returns the newest availability date."""
+    latest = conn.execute(sa.select(sa.func.max(db.products.c.availability_as_of))).scalar()
+    if latest is None:
+        log.warning("no Fresho product list loaded - limited/unavailable lines "
+                    "are NOT being filtered (download Products > Export weekly)")
+    elif (as_of - latest).days > config.AVAILABILITY_MAX_AGE_DAYS:
+        log.warning("Fresho availability is %d days old (product list of %s) - "
+                    "download a fresh one", (as_of - latest).days, latest)
+    return latest
+
+
 def select_top(conn, run_date: date | None = None) -> list[dict]:
     """Rank candidates and persist the top N to recommendations.
     Re-running for the same run_date replaces that run's rows (idempotent)."""
     as_of = run_date or as_of_date(conn)
+    check_availability_freshness(conn, as_of)
     stats = classify.customer_order_stats(conn)
     cats = _customer_categories(conn, config.GAP_LOOKBACK_DAYS, as_of)
     skus = _customer_skus(conn)
