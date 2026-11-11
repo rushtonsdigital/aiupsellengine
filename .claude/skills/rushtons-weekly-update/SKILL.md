@@ -95,17 +95,17 @@ buyer side — switch to Rushton's). Files land in `C:\Users\goodb\Downloads`.
   page scrolls when the date fields take focus, so fixed coordinates miss. Click Export →
   "Download Report" → Close.
 - File: `rushtons-greengrocers_sales_gp_margin_<start>_<end>.csv`.
-- **Sales report periods (since 11 Nov 2026):** the same report, once per date range listed
-  by `rushtons_engine\.venv\Scripts\python.exe rushtons_engine\sales_report.py needed <run
-  Monday>` — last week (Mon–Sun), the same week last year, month to date and the same dates
-  last month / last year. Usually 4–5 small files. Any range is fine here: the loader stores
-  each under its exact dates (`customer_period_values`) and only a single calendar month also
-  feeds the monthly figures. Faster than the date pickers: after the first Export, repeat
-  `form_input` start/end + click Export + a JS click on the "Download Report" link
-  (`[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Download Report').click()`)
-  then the dialog's Close — several ranges per `browser_batch`. Close the Fresho chat popup
-  first if it covers the Export button. After loading, `sales_report.py summary <Monday>`
-  must show no "NOT LOADED" (a last-year period before Oct 2025 is expected to be missing).
+- **Daily £ for the sales explorer (since 11 Nov 2026):** on the Operational Report at the
+  top of the Reports page, Report Type **Sales Line Items**, Format CSV, Start = the first
+  date printed by `rushtons_engine\.venv\Scripts\python.exe rushtons_engine\sales_explorer.py
+  missing <Sunday before the run>`, End = that Sunday (usually exactly last Mon–Sun). Generate,
+  wait for "Done.", click `rushton_s_sales_line_items_<start>_to_<end>.csv`. **One week at most
+  per file** - a whole month errors in Fresho. The form lives in an iframe; setting values by
+  JS needs the iframe window's native value setters + input/change events. The file holds cost
+  prices, addresses and staff names: keep it in the scratch run folder only, never the repo
+  (the loader reads only £, cost, qty, product group, customer, date). Re-run `missing` after
+  loading: it must print nothing. If Chrome blocks the downloads, ask the user to allow
+  multiple downloads for app.fresho.com.
 
 **d. Product list - EVERY week (live availability)** — Fresho → Products → *Product Pricing &
 Availability* tab → **Export/Import ▾ → Export CSV** (never Import) → wait for "Done." → click the

@@ -380,6 +380,9 @@ VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
 # Fresho Products > Export ("product list with level prices"), downloaded every
 # week. Only product_code + availability are read - never the price columns.
 PRODUCT_LIST_FILE_GLOB = "*product_list*.csv"
+# Fresho operational report, Report Type "Sales Line Items", CSV: every invoice
+# line with price and cost -> daily £ / gross profit (sales_daily, the explorer).
+LINE_ITEMS_FILE_GLOB = "*sales_line_items_*.csv"
 
 # --- live availability (2026-11-09) ----------------------------------------------
 # The monthly market report missed short supply (ceps, 2 Nov) and arrives after

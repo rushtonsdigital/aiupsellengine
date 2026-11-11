@@ -159,13 +159,19 @@ layer** for BI reports and ad-hoc data questions:
   replaces an older one; a multi-month file is skipped as it would double-count).
   Backfill/one-off: `python ingest.py values <file-or-folder>`. Claude can do
   the export itself in the user's Chrome (logged-in Fresho, Rushton's company).
-- **Sales report (preview, hidden)**: `sales_report.py` builds the dashboard's `#reporting`
-  section (open the artifact URL with `#reporting`; no menu button until the team signs off):
-  £ by customer and by current account manager for last week (Mon–Sun), month to date and
-  last month, against the previous period and the same period last year. Each comparison
-  range is its own Fresho GP-margin export, stored by exact range in
-  `customer_period_values` — `python sales_report.py needed <Monday>` lists what to download
-  each week (see the weekly skill, step 2b). Never sum overlapping ranges.
+- **Sales explorer (preview, hidden)**: `sales_explorer.py` feeds the dashboard's `#reporting`
+  section (open the artifact URL with `#reporting`; no menu button until the team signs off) —
+  a Google-Analytics-style page: pick dates + a comparison (previous period / same period last
+  year / custom), switch metrics on and off (net sales, gross profit, GP%, cost, rebates, GP
+  after rebates, deliveries, accounts, average delivery, lines), split by account manager,
+  customer, category, venue or tier. Source: Fresho's operational report **"Sales Line Items"**
+  (every invoice line with unit price, cost price, rebate %), loaded as daily £ per customer x
+  category into `sales_daily` (`python ingest.py lineitems <file-or-folder>`; reconciles to the
+  GP-margin report to the pound). This also gives **margin by category** for the first time.
+  Weekly: one export from the day after the last loaded day (`python sales_explorer.py missing`).
+  A whole month fails in Fresho - export a week at a time. Only £/cost/qty columns are read;
+  the export's addresses, notes and staff names never enter the database. `customer_period_values`
+  (GP-margin report for any exact range) stays as a cross-check; never sum overlapping ranges.
 - New env var `REPORTING_DATABASE_URL` (in `.env`) holds the read-only role's
   connection string; it falls back to `DATABASE_URL` on local SQLite.
 - **Commercial plays**: the `rushtons-commercial-plays` skill holds four named

@@ -141,6 +141,21 @@ create table if not exists customer_month_values (
   primary key (customer_code, month)
 );
 
+-- Daily £ by customer x category from Fresho's "Sales Line Items" report
+-- (line totals + cost price x qty). Reconciles to the GP-margin report.
+create table if not exists sales_daily (
+  customer_code text,
+  sale_date     date,             -- delivery date
+  category      text,             -- categories.py canonical category
+  net_sales     numeric,
+  cost          numeric,
+  rebate        numeric,          -- line total x rebate %
+  lines         int,
+  source_file   text,
+  ingested_at   timestamptz,
+  primary key (customer_code, sale_date, category)
+);
+
 -- The same report for any exact date range (weeks, month to date, last year's
 -- matching week) - the sales report's comparisons. Never sum overlapping ranges.
 create table if not exists customer_period_values (

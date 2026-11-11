@@ -208,6 +208,24 @@ customer_period_values = sa.Table(
     sa.Column("ingested_at", sa.DateTime(timezone=True)),
 )
 
+# Daily £ by customer x category, from Fresho's "Sales Line Items" operational
+# report (every invoice line with unit price, cost price, discount, line total
+# and rebate %). Reconciles to the GP-margin report to the pound (net of credits).
+# Kept at customer x day x category, not per line, to stay small on the free
+# Supabase tier. Deliveries = distinct customer-days. Feeds the sales explorer.
+sales_daily = sa.Table(
+    "sales_daily", metadata,
+    sa.Column("customer_code", sa.Text, primary_key=True),
+    sa.Column("sale_date", sa.Date, primary_key=True),     # delivery date
+    sa.Column("category", sa.Text, primary_key=True),      # categories.py canonical
+    sa.Column("net_sales", sa.Numeric),                    # sum of line totals
+    sa.Column("cost", sa.Numeric),                         # sum of cost price x qty
+    sa.Column("rebate", sa.Numeric),                       # line total x rebate %
+    sa.Column("lines", sa.Integer),
+    sa.Column("source_file", sa.Text),
+    sa.Column("ingested_at", sa.DateTime(timezone=True)),
+)
+
 # Per-account x product purchase history and a per-account order profile, for
 # the account page's order-history overview (top products, stopped lines,
 # order days). Rebuilt each run by reporting.refresh_sales from the same scan.
