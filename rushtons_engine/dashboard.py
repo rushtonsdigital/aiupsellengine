@@ -846,7 +846,10 @@ def _load_sales_explorer() -> dict | None:
         return None
 
 
-def build(as_of: date | None = None, state: dict | None = None) -> str:
+def build(as_of: date | None = None, state: dict | None = None,
+          preview_nav: bool = False) -> str:
+    """preview_nav=True adds a menu button for the #reporting preview (Jose's
+    private copy); the team's page reaches it only by the #reporting link."""
     decline = _rows(Q_DECLINE)
     winback = _rows(Q_WINBACK)
     gaps_named = _rows(Q_PEER_GAPS)
@@ -1001,6 +1004,8 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{GAP_ROWS}}", gap_rows or
                      "<tr><td colspan='5'>No gold-tier peer gaps.</td></tr>")
             .replace("{{REPS_CHART}}", _svg_reps(reps))
+            .replace("{{PREVIEW_NAV}}", '      <button data-tab="reporting">Sales explorer'
+                     ' (preview)</button>\n' if preview_nav else "")
             .replace("{{KPI_SALES}}", kpi_sales)
             .replace("{{LOGO}}", LOGO_SVG)
             .replace("{{LEADS_APP_URL}}", e(config.LEADS_APP_URL))
@@ -1443,7 +1448,7 @@ input[type="date"].act { cursor:text; }
       </div>
       <span class="ng">CUSTOMERS</span>
       <button data-tab="sales">Sales &amp; margin</button>
-      <button data-tab="accounts">Accounts</button>
+{{PREVIEW_NAV}}      <button data-tab="accounts">Accounts</button>
       <button data-tab="contacts">Contacts</button>
       <span class="ng">ACQUIRE</span>
       <button data-tab="leads">Leads &#8599;</button>
