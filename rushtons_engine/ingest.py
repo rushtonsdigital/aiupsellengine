@@ -279,14 +279,22 @@ def _money(value: str) -> float:
     return -v if neg else v
 
 
-def value_file_period(path: Path) -> tuple[date, date]:
-    """(start, end) from the export's filename; raises NotAMonthError unless the
-    range starts on the 1st and ends inside the same month."""
+def value_file_range(path: Path) -> tuple[date, date]:
+    """(start, end) of any GP-margin export, from its filename."""
     m = _VALUE_PERIOD.search(path.name)
     if not m:
         raise NotAMonthError(f"{path.name}: no _YYYY-MM-DD_YYYY-MM-DD date range in the name")
     start, end = _parse_date(m.group(1)), _parse_date(m.group(2))
-    if start.day != 1 or (end.year, end.month) != (start.year, start.month) or end < start:
+    if end < start:
+        raise NotAMonthError(f"{path.name}: end {end} is before start {start}")
+    return start, end
+
+
+def value_file_period(path: Path) -> tuple[date, date]:
+    """(start, end) from the export's filename; raises NotAMonthError unless the
+    range starts on the 1st and ends inside the same month."""
+    start, end = value_file_range(path)
+    if start.day != 1 or (end.year, end.month) != (start.year, start.month):
         raise NotAMonthError(f"{path.name}: {start}..{end} is not a single calendar "
                              f"month - export one month (or month to date) per file")
     return start, end
@@ -344,16 +352,41 @@ def ingest_values_file(conn, path: Path) -> int:
     return len(rows)
 
 
+def ingest_period_values_file(conn, path: Path) -> int:
+    """Load a GP-margin export of ANY date range into customer_period_values,
+    keyed by its exact range (replacing a previous load of the same range)."""
+    start, end = value_file_range(path)
+    t = db.customer_period_values
+    rows = read_value_rows(path)
+    conn.execute(t.delete().where((t.c.period_start == start) & (t.c.period_end == end)))
+    if rows:
+        now = db.now_utc()
+        conn.execute(t.insert(), [{**r, "period_start": start, "period_end": end,
+                                   "source_file": path.name, "ingested_at": now}
+                                  for r in rows])
+    log.info("%s: %d accounts, period %s..%s", path.name, len(rows), start, end)
+    return len(rows)
+
+
 def ingest_values_files(conn, paths) -> int:
-    """Load every GP-margin export given, oldest period first, skipping (with a
-    warning) any that isn't a single month - e.g. a Jan-Oct total."""
-    dated = []
+    """Load every GP-margin export given, oldest period first. Every file goes
+    into customer_period_values under its exact range (weeks, month to date,
+    last year's matching week - the sales report); a single month (or month to
+    date) ALSO feeds customer_month_values. A multi-month total only lands in
+    the period table, where nothing sums it with the months."""
+    month_files, other = [], []
     for p in map(Path, paths):
         try:
-            dated.append((value_file_period(p), p))
-        except NotAMonthError as exc:
-            log.warning("%s", exc)
-    return sum(ingest_values_file(conn, p) for _, p in sorted(dated))
+            month_files.append((value_file_period(p), p))
+        except NotAMonthError:
+            try:
+                other.append((value_file_range(p), p))
+            except NotAMonthError as exc:
+                log.warning("%s", exc)
+    n = sum(ingest_values_file(conn, p) for _, p in sorted(month_files))
+    for _, p in sorted(month_files) + sorted(other):
+        ingest_period_values_file(conn, p)
+    return n
 
 
 PRODUCT_LIST_AVAILABILITY_PREFIX = "availability"

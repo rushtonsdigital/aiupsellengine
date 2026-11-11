@@ -66,6 +66,14 @@ re-import it. Dashboard republished with the leads CRM (lead pages, funnel, Foll
 6. **Year-on-year and financial year views** — Oct 2025 vs Oct 2026 from November; FY Nov–Oct
    totals; a sustained-£-decline alert (Hannah: River Cafe's dip is "the typical sign of when
    they're going to go").
+   *Started 11 Nov (branch `feat/sales-reporting`):* hidden **Sales report** section on the
+   dashboard (`#reporting`, not in the menu) — by customer and by account manager, week /
+   month to date / last month vs previous period and same period last year, movers, 8-week
+   trend. Asked for by Hannah (9 Nov email) and agreed on the 11 Nov call for Monday 16 Nov.
+   Weekly £ comes from extra GP-margin exports per date range (`customer_period_values`,
+   `sales_report.py needed`). Open with the team: Harry/Colin's KPI list (price list, invoice
+   report, customer list, product totals); AMs are "as is" (current manager for every period);
+   the Monday email version (AI commentary, human-checked) is next.
 7. **Leads connected properly** (Hannah's ask on 19 Oct) — £ of converted leads, an
    "Add prospect" form (needs #1), lead → customer conversion tracking.
    *Done 25 Oct:* the website forms post straight into Supabase (`lead-intake` Edge

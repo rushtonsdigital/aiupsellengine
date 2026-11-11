@@ -78,6 +78,11 @@ SILVER_PERCENTILE = 0.70   # next 50%; remainder bronze
 # loaded they fall back to lifetime order lines. Rule-excluded accounts are
 # left out of the percentile pool (classify.size_bands).
 VALUE_BAND_MONTHS = 3
+# Fresho holds £ data from this date (Rushton's moved onto it in Oct 2025): a
+# comparison period that starts earlier is partial and is flagged, not compared.
+VALUE_DATA_FROM = "2025-10-01"
+# Sales report (hidden #reporting section): weeks of trend shown, Mon-Sun.
+SALES_REPORT_TREND_WEEKS = 8
 # Hand ratings the team has confirmed, {customer_code: 'gold'|'silver'|'bronze'}.
 # They beat the computed band. (Hannah 2026-10-14: ratings were reviewed by
 # hand - output/tier_review_<date>.csv lists where they differ from the data.)

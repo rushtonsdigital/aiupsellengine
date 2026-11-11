@@ -42,6 +42,7 @@ from pathlib import Path
 import config
 import help_section
 import query
+import sales_report
 
 TARGETABLE = list(config.TARGETABLE_CATEGORIES)
 
@@ -835,6 +836,16 @@ def _drilldown(codes, all_weeks, as_of):
     return series, stopped, gaps
 
 
+def _load_sales_report(as_of) -> dict | None:
+    """The hidden #reporting section's data (sales_report.build). A page build
+    never fails over it: with no period exports loaded the section says so."""
+    try:
+        return sales_report.build(as_of)
+    except Exception:                      # noqa: BLE001 - optional preview section
+        log.exception("sales report: not built")
+        return None
+
+
 def build(as_of: date | None = None, state: dict | None = None) -> str:
     decline = _rows(Q_DECLINE)
     winback = _rows(Q_WINBACK)
@@ -947,6 +958,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "leadVerdictDue": config.LEAD_VERDICT_DUE_DAYS,
         "value": values,
         "valueMonths": value_months,
+        "salesReport": _load_sales_report(as_of),
         "hist": history,
         "prodNames": product_names,
         "venueNotes": _load_venue_notes(),
@@ -1246,6 +1258,17 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .cpane { display:none; }
 .cpane.on { display:block; }
 .dirbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:.4rem; }
+.rptctl { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center;
+  margin:.2rem 0 1rem; }
+.rptctl .ctabs { margin:0; flex-wrap:wrap; }
+.rptmov > div + div { margin-top:.8rem; }
+#rpt-reps tr[data-rep] { cursor:pointer; }
+#rpt-reps tr[data-rep]:hover td { background:var(--raise); }
+#rpt-reps tr.sel td { font-weight:600; }
+#rpt-all th[data-sort] { cursor:pointer; white-space:nowrap; }
+#rpt-all th[data-sort]:hover { color:var(--accent); }
+.rptbar { fill:var(--accent); }
+.rptly { fill:none; stroke:var(--muted); stroke-width:1.2; stroke-dasharray:3 2; }
 .drow { border-bottom:.5px solid var(--line); }
 .dmeta { font-size:11.5px; color:var(--muted); white-space:nowrap; }
 .contact { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px;
@@ -1523,6 +1546,62 @@ input[type="date"].act { cursor:text; }
       </div>
     </div>
 
+    <div class="section" id="sec-reporting">
+      <div class="play">
+        <div class="tag">PREVIEW &#183; SALES REPORT</div>
+        <h2>Sales by customer and account manager</h2>
+        <p class="lede">Net sales (after credits) and cash margin for the last
+          week, the month so far and last month, against the period before and
+          the same period last year. From Fresho's Sales Totals and Gross Profit
+          Margin report.<br>A preview for feedback &#8212; not in the menu yet.</p>
+        <div class="rptctl">
+          <div class="ctabs" id="rpt-per" role="group" aria-label="Period"></div>
+          <div class="ctabs" id="rpt-cmp" role="group" aria-label="Compare with"></div>
+          <select class="act" id="rpt-rep" aria-label="Account manager"></select>
+        </div>
+        <div class="kpis" id="rpt-kpis"></div>
+        <div id="rpt-note"></div>
+        <h3>Week by week</h3>
+        <p class="said" id="rpt-trend-said"></p>
+        <div class="scroll" id="rpt-trend"></div>
+        <h3>By account manager</h3>
+        <p class="said">Each account counts under its <b>current</b> account
+          manager for every period, including last year (Fresho keeps no history
+          of who managed an account when). Click a row to filter the page.</p>
+        <div class="scroll" id="rpt-reps"></div>
+        <h3>Biggest movers</h3>
+        <div class="rptmov">
+          <div><p class="said">Up most (&#163;)</p><div class="scroll" id="rpt-up"></div></div>
+          <div><p class="said">Down most (&#163;)</p><div class="scroll" id="rpt-down"></div></div>
+        </div>
+        <h3>All customers</h3>
+        <div class="dirbar">
+          <input class="act noteinput" id="rpt-q" type="search"
+                 placeholder="Search customers&#8230;" aria-label="Search customers">
+        </div>
+        <div class="scroll" id="rpt-all"></div>
+        <details class="help" style="margin-top:1.2rem"><summary>How these numbers
+          are worked out</summary><div class="helpbody">
+          <ul>
+          <li><b>Week</b> = Monday to Sunday, the last complete week before the
+            report date. <b>Same week last year</b> = the Monday&#8211;Sunday 52
+            weeks earlier, so the days of the week line up.</li>
+          <li><b>Month to date</b> = the 1st to the end of that week, against the
+            same dates last month and last year. Those can hold a different number
+            of delivery days (Monday&#8211;Saturday), so &#163; per delivery day
+            is shown too.</li>
+          <li><b>Last month</b> = the last complete calendar month.</li>
+          <li>&#163; is net sales after credits; cash margin is gross profit in
+            &#163; (net sales minus cost of goods). Per account only &#8212; Fresho's
+            report has no product or category split.</li>
+          <li>Fresho holds &#163; data from 1 October 2025, so a last-year
+            period before then is shown as not available rather than compared.</li>
+          <li>&#8220;New&#8221; = bought nothing in the comparison period;
+            &#8220;stopped&#8221; = bought nothing this period.</li>
+          </ul></div></details>
+      </div>
+    </div>
+
     <div class="section" id="sec-accounts">
       <div class="play">
         <div class="tag">ACCOUNTS</div>
@@ -1705,7 +1784,7 @@ input[type="date"].act { cursor:text; }
   }
 
   var TABS = ['actions','protect','recover','grow','manage','accounts',
-              'leads','contacts','leadrecs','sales','help'];
+              'leads','contacts','leadrecs','sales','help','reporting'];
   var curAcct = null;
   var hamb = document.getElementById('hamb');
   var sitenav = document.getElementById('sitenav');
@@ -1731,6 +1810,8 @@ input[type="date"].act { cursor:text; }
     var b = document.querySelector('.nav button[data-tab="' + tab + '"]');
     var lbl = document.getElementById('mcur');
     if(lbl && b) lbl.textContent = b.firstChild.textContent;
+    // #reporting is a preview reached by link only - no menu button yet
+    else if(lbl && tab === 'reporting') lbl.textContent = 'Sales report (preview)';
     closeNav();
   }
   function hidePages(){
@@ -2371,6 +2452,249 @@ input[type="date"].act { cursor:text; }
             + (a.p3 ? trendHtml(100 * (a.lm - a.p3) / a.p3) : '') + '</td></tr>';
         }).join(''));
   }
+
+  // --- Sales report (preview, #reporting) ---------------------------------
+  // DATA.salesReport.rows[i].p[period] = [cur, prev, ly, gpCur, gpPrev, gpLy];
+  // null = that period's export isn't loaded, 0 = loaded but no sales.
+  var RPT = {per: 'w', cmp: 'prev', rep: '', q: '', sort: 'cur', desc: true, all: false};
+  var RPT_PER = [['w', 'Week'], ['mtd', 'Month to date'], ['m', 'Last month']];
+  function rptCmpLabel(k){
+    var unit = RPT.per === 'w' ? 'week' : 'month';
+    return k === 'prev' ? 'vs previous ' + unit : 'vs same ' + unit + ' last year';
+  }
+  function rptChg(a, b){
+    if(a === null || b === null || a === undefined || b === undefined) return '';
+    if(!b && !a) return '';
+    if(!b) return '<span class="up">new</span>';
+    if(!a) return '<span class="down">stopped</span>';
+    return trendHtml(100 * (a - b) / Math.abs(b));
+  }
+  function rptSigned(v){
+    if(v === null || v === undefined) return '';
+    return '<span class="' + (v < 0 ? 'down' : 'up') + '">' + (v > 0 ? '+' : v < 0 ? '−' : '')
+      + money(Math.abs(v)) + '</span>';
+  }
+  function renderReport(){
+    var SR = DATA.salesReport;
+    var kp = document.getElementById('rpt-kpis');
+    if(!kp) return;
+    if(!SR || !SR.rows || !SR.rows.length){
+      kp.innerHTML = '<p class="said">No weekly £ data loaded yet.</p>';
+      return;
+    }
+    var P = SR.periods[RPT.per], ci = RPT.cmp === 'prev' ? 1 : 2;
+    var cmpMeta = P[RPT.cmp];
+    document.getElementById('rpt-per').innerHTML = RPT_PER.map(function(x){
+      return '<button data-rper="' + x[0] + '" aria-current="'
+        + (RPT.per === x[0]) + '">' + x[1] + '</button>'; }).join('');
+    document.getElementById('rpt-cmp').innerHTML = ['prev', 'ly'].map(function(k){
+      return '<button data-rcmp="' + k + '" aria-current="' + (RPT.cmp === k) + '">'
+        + rptCmpLabel(k) + '</button>'; }).join('');
+    var reps = {};
+    SR.rows.forEach(function(r){ reps[r.r] = 1; });
+    var repSel = document.getElementById('rpt-rep');
+    repSel.innerHTML = '<option value="">All account managers</option>'
+      + Object.keys(reps).sort().map(function(k){
+          return '<option value="' + esc(k) + '"' + (RPT.rep === k ? ' selected' : '')
+            + '>' + esc(k) + '</option>'; }).join('');
+
+    var rows = SR.rows.filter(function(r){ return !RPT.rep || r.r === RPT.rep; });
+    var haveCur = P.cur.have, haveCmp = cmpMeta.have && !cmpMeta.partial;
+    function sum(idx){
+      return rows.reduce(function(a, r){ return a + (r.p[RPT.per][idx] || 0); }, 0);
+    }
+    var cur = sum(0), cmp = sum(ci), gcur = sum(3), gcmp = sum(3 + ci);
+    var nCur = rows.filter(function(r){ return r.p[RPT.per][0] > 0; }).length;
+    var nCmp = rows.filter(function(r){ return r.p[RPT.per][ci] > 0; }).length;
+    var who = RPT.rep ? ' · ' + esc(RPT.rep) : '';
+    var h = '';
+    if(haveCur){
+      h += tile(moneyK(cur), 'net sales ' + esc(P.cur.label) + who
+        + (haveCmp ? ' · ' + rptChg(cur, cmp) + ' ' + rptCmpLabel(RPT.cmp) : ''));
+      h += tile(haveCmp ? rptSigned(cur - cmp) : '—', haveCmp
+        ? 'change against ' + esc(cmpMeta.label) + ' (' + moneyK(cmp) + ')'
+        : esc(cmpMeta.label) + ' not available');
+      h += tile(moneyK(gcur), 'cash margin · ' + (cur ? (100 * gcur / cur).toFixed(1)
+        : '0') + '% of sales' + (haveCmp && cmp ? ' (was ' + (100 * gcmp / cmp).toFixed(1)
+        + '%)' : ''));
+      h += tile(String(nCur), 'accounts buying' + (haveCmp ? ' (' + nCmp + ' in '
+        + esc(cmpMeta.label) + ')' : ''));
+      if(RPT.per === 'mtd' && haveCmp && P.cur.days && cmpMeta.days)
+        h += tile(moneyK(cur / P.cur.days), 'per delivery day (' + P.cur.days
+          + ' days) · ' + rptChg(cur / P.cur.days, cmp / cmpMeta.days)
+          + ' against ' + moneyK(cmp / cmpMeta.days) + ' (' + cmpMeta.days + ' days)');
+    }
+    kp.innerHTML = h || '<p class="said">' + esc(P.cur.label) + ' isn’t loaded yet.</p>';
+    var note = '';
+    if(!cmpMeta.have || cmpMeta.partial)
+      note = esc(cmpMeta.label) + (cmpMeta.partial
+        ? ' starts before Fresho’s £ data (1 October 2025), so it isn’t compared.'
+        : ' hasn’t been exported from Fresho yet, so there’s nothing to compare.');
+    else if(P.cur.days !== cmpMeta.days)
+      note = esc(P.cur.label) + ' has ' + P.cur.days + ' delivery days; '
+        + esc(cmpMeta.label) + ' has ' + cmpMeta.days + ' — compare like with like.';
+    document.getElementById('rpt-note').innerHTML = note
+      ? '<p class="note">' + note + '</p>' : '';
+
+    // week-by-week trend: this year's bars, last year's dashed outline
+    var T = SR.trend, tc = RPT.rep ? (T.byRep[RPT.rep] || {cur: [], ly: []}) : T;
+    var mx = 0;
+    T.weeks.forEach(function(w, i){ mx = Math.max(mx, tc.cur[i] || 0, tc.ly[i] || 0); });
+    var W = 640, H = 190, pl = 46, pb = 26, pt = 10, n = T.weeks.length;
+    var bw = (W - pl - 8) / Math.max(n, 1);
+    var svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" '
+      + 'aria-label="Net sales by week this year, with the same week last year">';
+    for(var g = 0; g <= 2; g++){
+      var gv = mx * g / 2, gy = H - pb - (H - pb - pt) * g / 2;
+      svg += '<line x1="' + pl + '" x2="' + W + '" y1="' + gy + '" y2="' + gy
+        + '" stroke="var(--grid)"/><text class="tick" x="' + (pl - 6) + '" y="'
+        + (gy + 3) + '" text-anchor="end">' + moneyK(gv) + '</text>';
+    }
+    T.weeks.forEach(function(w, i){
+      var x = pl + i * bw + bw * .18, w2 = bw * .64;
+      var c = tc.cur[i], l = tc.ly[i];
+      if(mx && c !== null){
+        var hc = (H - pb - pt) * c / mx;
+        svg += '<rect class="rptbar" x="' + x.toFixed(1) + '" y="' + (H - pb - hc).toFixed(1)
+          + '" width="' + w2.toFixed(1) + '" height="' + hc.toFixed(1) + '" rx="2"><title>w/c '
+          + esc(T.labels[i]) + ': ' + money(c) + (l !== null ? ' (last year ' + money(l) + ')' : '')
+          + '</title></rect>';
+      }
+      if(mx && l !== null && l !== undefined){
+        var hl = (H - pb - pt) * l / mx;
+        svg += '<rect class="rptly" x="' + (x - 2).toFixed(1) + '" y="' + (H - pb - hl).toFixed(1)
+          + '" width="' + (w2 + 4).toFixed(1) + '" height="' + hl.toFixed(1) + '"/>';
+      }
+      svg += '<text class="axis" x="' + (x + w2 / 2).toFixed(1) + '" y="' + (H - 8)
+        + '" text-anchor="middle">' + parseInt(w.slice(8), 10) + ' ' + monLabel(w.slice(0, 7))
+        + '</text>';
+    });
+    document.getElementById('rpt-trend').innerHTML = svg + '</svg>';
+    document.getElementById('rpt-trend-said').innerHTML = 'Net sales per week (Mon–Sun)'
+      + who + '. Solid = this year; dashed outline = the same week last year'
+      + ' (none before October 2025).';
+
+    // by account manager (ignores the rep filter, so it stays a league view)
+    var byRep = {};
+    SR.rows.forEach(function(r){
+      var a = byRep[r.r] = byRep[r.r] || {n: 0, cur: 0, cmp: 0, g: 0};
+      var p = r.p[RPT.per];
+      if(p[0] > 0) a.n += 1;
+      a.cur += p[0] || 0; a.cmp += p[ci] || 0; a.g += p[3] || 0;
+    });
+    var tt = {n: 0, cur: 0, cmp: 0, g: 0};
+    Object.keys(byRep).forEach(function(k){
+      ['n', 'cur', 'cmp', 'g'].forEach(function(f){ tt[f] += byRep[k][f]; }); });
+    function repRow(name, a, attr){
+      return '<tr' + attr + '><td>' + name + '</td><td class="num">' + a.n
+        + '</td><td class="num">' + money(a.cur) + '</td><td class="num">'
+        + (haveCmp ? money(a.cmp) : '') + '</td><td class="num">'
+        + (haveCmp ? rptSigned(a.cur - a.cmp) : '') + '</td><td class="num">'
+        + (haveCmp ? rptChg(a.cur, a.cmp) : '') + '</td><td class="num">' + money(a.g)
+        + '</td><td class="num">' + (a.cur ? (100 * a.g / a.cur).toFixed(1) + '%' : '')
+        + '</td></tr>';
+    }
+    document.getElementById('rpt-reps').innerHTML = table(
+      '<th>Account manager</th><th class="num">Buying</th><th class="num">'
+        + esc(P.cur.label) + '</th><th class="num">' + esc(cmpMeta.label)
+        + '</th><th class="num">£ change</th><th class="num">%</th>'
+        + '<th class="num">Cash margin</th><th class="num">GP%</th>',
+      Object.keys(byRep).sort(function(a, b){ return byRep[b].cur - byRep[a].cur; })
+        .map(function(k){
+          return repRow(esc(k), byRep[k], ' data-rep="' + esc(k) + '"'
+            + (RPT.rep === k ? ' class="sel"' : ''));
+        }).join('') + repRow('<b>All</b>', tt, ' data-rep=""'));
+
+    // movers + full list
+    function nm(r){
+      return dirRow(r.c) ? acctBtn({c: r.c, n: r.n}) : esc(r.n);
+    }
+    var withD = rows.map(function(r){
+      var p = r.p[RPT.per];
+      return {r: r, cur: p[0], cmp: p[ci], d: (p[0] || 0) - (p[ci] || 0), g: p[3]};
+    });
+    function movers(list){
+      return table('<th>Customer</th><th>Manager</th><th class="num">' + esc(P.cur.label)
+        + '</th><th class="num">' + esc(cmpMeta.label) + '</th><th class="num">Change</th>',
+        list.map(function(x){
+          return '<tr><td>' + nm(x.r) + '</td><td>' + esc(x.r.r) + '</td><td class="num">'
+            + money(x.cur) + '</td><td class="num">' + money(x.cmp) + '</td><td class="num">'
+            + rptSigned(x.d) + ' ' + rptChg(x.cur, x.cmp) + '</td></tr>';
+        }).join(''));
+    }
+    if(haveCur && haveCmp){
+      document.getElementById('rpt-up').innerHTML = movers(withD.filter(function(x){
+        return x.d > 0; }).sort(function(a, b){ return b.d - a.d; }).slice(0, 10));
+      document.getElementById('rpt-down').innerHTML = movers(withD.filter(function(x){
+        return x.d < 0; }).sort(function(a, b){ return a.d - b.d; }).slice(0, 10));
+    } else {
+      document.getElementById('rpt-up').innerHTML = '<p class="said">Needs both periods.</p>';
+      document.getElementById('rpt-down').innerHTML = '';
+    }
+    var q = RPT.q.toLowerCase();
+    var all = withD.filter(function(x){ return !q || x.r.n.toLowerCase().indexOf(q) >= 0; });
+    var key = {cur: 'cur', cmp: 'cmp', d: 'd', g: 'g',
+               pct: null, n: null, r: null}[RPT.sort];
+    all.sort(function(a, b){
+      var va, vb;
+      if(RPT.sort === 'n' || RPT.sort === 'r'){
+        va = (RPT.sort === 'n' ? a.r.n : a.r.r).toLowerCase();
+        vb = (RPT.sort === 'n' ? b.r.n : b.r.r).toLowerCase();
+        return (va < vb ? -1 : va > vb ? 1 : 0) * (RPT.desc ? -1 : 1);
+      }
+      if(RPT.sort === 'pct'){
+        va = a.cmp ? (a.d / Math.abs(a.cmp)) : (a.cur ? 9e9 : 0);
+        vb = b.cmp ? (b.d / Math.abs(b.cmp)) : (b.cur ? 9e9 : 0);
+      } else { va = a[key] || 0; vb = b[key] || 0; }
+      return (va - vb) * (RPT.desc ? -1 : 1);
+    });
+    var shown = RPT.all ? all : all.slice(0, 60);
+    function th(k, label, num){
+      var on = RPT.sort === k;
+      return '<th data-sort="' + k + '"' + (num ? ' class="num"' : '') + ' aria-sort="'
+        + (on ? (RPT.desc ? 'descending' : 'ascending') : 'none') + '">' + label
+        + (on ? (RPT.desc ? ' ▾' : ' ▴') : '') + '</th>';
+    }
+    document.getElementById('rpt-all').innerHTML = table(
+      th('n', 'Customer') + th('r', 'Manager') + th('cur', esc(P.cur.label), 1)
+        + th('cmp', esc(cmpMeta.label), 1) + th('d', '£ change', 1)
+        + th('pct', '%', 1) + th('g', 'Cash margin', 1),
+      shown.map(function(x){
+        return '<tr><td>' + nm(x.r) + '</td><td>' + esc(x.r.r) + '</td><td class="num">'
+          + money(x.cur) + '</td><td class="num">' + (haveCmp ? money(x.cmp) : '')
+          + '</td><td class="num">' + (haveCmp ? rptSigned(x.d) : '') + '</td><td class="num">'
+          + (haveCmp ? rptChg(x.cur, x.cmp) : '') + '</td><td class="num">' + money(x.g)
+          + '</td></tr>';
+      }).join(''))
+      + (all.length > shown.length ? '<p><button class="act" data-rall>Show all '
+         + all.length + ' customers</button></p>'
+         : '<p class="said">' + all.length + ' customers.</p>');
+  }
+  (function(){
+    var sec = document.getElementById('sec-reporting');
+    if(!sec) return;
+    sec.addEventListener('click', function(ev){
+      var t = ev.target.closest('[data-rper],[data-rcmp],[data-rep],[data-sort],[data-rall]');
+      if(!t || ev.target.closest('[data-goacct]')) return;
+      if(t.hasAttribute('data-rper')) RPT.per = t.getAttribute('data-rper');
+      else if(t.hasAttribute('data-rcmp')) RPT.cmp = t.getAttribute('data-rcmp');
+      else if(t.hasAttribute('data-rep')){
+        var rp = t.getAttribute('data-rep');
+        RPT.rep = RPT.rep === rp ? '' : rp;
+      } else if(t.hasAttribute('data-sort')){
+        var k = t.getAttribute('data-sort');
+        if(RPT.sort === k) RPT.desc = !RPT.desc;
+        else { RPT.sort = k; RPT.desc = !(k === 'n' || k === 'r'); }
+      } else if(t.hasAttribute('data-rall')) RPT.all = true;
+      renderReport();
+    });
+    sec.addEventListener('change', function(ev){
+      if(ev.target.id === 'rpt-rep'){ RPT.rep = ev.target.value; renderReport(); }
+    });
+    sec.addEventListener('input', function(ev){
+      if(ev.target.id === 'rpt-q'){ RPT.q = ev.target.value; renderReport(); }
+    });
+  })();
 
   function renderDir(){
     var host = document.getElementById('dirlist');
@@ -3161,6 +3485,7 @@ input[type="date"].act { cursor:text; }
     render('list-winback', DATA.winbackOrder);
     renderDir();
     renderSales();
+    renderReport();
     renderLeads();
     renderContacts();
     renderLeadRecs();

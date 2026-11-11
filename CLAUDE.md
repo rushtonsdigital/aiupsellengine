@@ -159,6 +159,13 @@ layer** for BI reports and ad-hoc data questions:
   replaces an older one; a multi-month file is skipped as it would double-count).
   Backfill/one-off: `python ingest.py values <file-or-folder>`. Claude can do
   the export itself in the user's Chrome (logged-in Fresho, Rushton's company).
+- **Sales report (preview, hidden)**: `sales_report.py` builds the dashboard's `#reporting`
+  section (open the artifact URL with `#reporting`; no menu button until the team signs off):
+  £ by customer and by current account manager for last week (Mon–Sun), month to date and
+  last month, against the previous period and the same period last year. Each comparison
+  range is its own Fresho GP-margin export, stored by exact range in
+  `customer_period_values` — `python sales_report.py needed <Monday>` lists what to download
+  each week (see the weekly skill, step 2b). Never sum overlapping ranges.
 - New env var `REPORTING_DATABASE_URL` (in `.env`) holds the read-only role's
   connection string; it falls back to `DATABASE_URL` on local SQLite.
 - **Commercial plays**: the `rushtons-commercial-plays` skill holds four named

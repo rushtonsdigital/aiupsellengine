@@ -95,6 +95,17 @@ buyer side — switch to Rushton's). Files land in `C:\Users\goodb\Downloads`.
   page scrolls when the date fields take focus, so fixed coordinates miss. Click Export →
   "Download Report" → Close.
 - File: `rushtons-greengrocers_sales_gp_margin_<start>_<end>.csv`.
+- **Sales report periods (since 11 Nov 2026):** the same report, once per date range listed
+  by `rushtons_engine\.venv\Scripts\python.exe rushtons_engine\sales_report.py needed <run
+  Monday>` — last week (Mon–Sun), the same week last year, month to date and the same dates
+  last month / last year. Usually 4–5 small files. Any range is fine here: the loader stores
+  each under its exact dates (`customer_period_values`) and only a single calendar month also
+  feeds the monthly figures. Faster than the date pickers: after the first Export, repeat
+  `form_input` start/end + click Export + a JS click on the "Download Report" link
+  (`[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Download Report').click()`)
+  then the dialog's Close — several ranges per `browser_batch`. Close the Fresho chat popup
+  first if it covers the Export button. After loading, `sales_report.py summary <Monday>`
+  must show no "NOT LOADED" (a last-year period before Oct 2025 is expected to be missing).
 
 **d. Product list - EVERY week (live availability)** — Fresho → Products → *Product Pricing &
 Availability* tab → **Export/Import ▾ → Export CSV** (never Import) → wait for "Done." → click the

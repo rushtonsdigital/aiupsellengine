@@ -20,7 +20,10 @@ reporting views, run it safely, and answer.
    Profit Margin" report, loaded one calendar month per file into `customer_month_values`
    (net_sales, gross_profit, cogs, credits — from Jan 2026) and summarised per account in
    `customer_value_metrics` (sales_12m, gp_pct_12m, sales_last_month, sales_prev3_avg,
-   trend_pct, sales_mtd, aov_last_month). There is **no £ by product or category** — that
+   trend_pct, sales_mtd, aov_last_month). Since Nov 2026 `customer_period_values` also holds
+   the same report for exact date ranges (Mon–Sun weeks, month to date, last year's matching
+   week — see `sales_report.py`); filter on `period_start`/`period_end` exactly and never sum
+   overlapping ranges. There is **no £ by product or category** — that
    report has no product split. Everything order-based (orders, lines, `quantity`, every `v_*`
    view) is still *volume*. For "what did X spend / GP%", use the value tables; for "which
    categories make the money", say it isn't available yet.
