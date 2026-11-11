@@ -103,7 +103,9 @@ biggest &#163; falls, top accounts, lowest margins and totals by account manager
 <ul>
 <li><b>Net sales</b> &#8212; the value of orders after credits (refunds and returns).</li>
 <li><b>Gross profit (GP)</b> &#8212; net sales minus the cost of the goods.
-<b>GP%</b> is gross profit as a share of net sales.</li>
+<b>Cash margin</b> is that gross profit in &#163; (what an account actually
+earns us); <b>GP%</b> is the same figure as a share of net sales. A big account
+on a thin % can still earn more cash than a small one on a high %.</li>
 <li><b>Credits</b> &#8212; refunds and returns. Shown as a % of sales on each
 account; a high figure is a rough sign of quality or service problems.</li>
 <li><b>Average order value</b> &#8212; last full month's net sales divided by the

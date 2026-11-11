@@ -391,7 +391,7 @@ def _svg_reps(rows) -> str:
 
 
 Q_VALUES = """
-select customer_code, sales_12m, gp_pct_12m, sales_last_month, gp_pct_last_month,
+select customer_code, sales_12m, gp_12m, gp_pct_12m, sales_last_month, gp_pct_last_month,
        sales_prev3_avg, trend_pct, sales_mtd, aov_last_month, series
 from customer_value_metrics
 """
@@ -422,6 +422,7 @@ def _load_values() -> tuple[dict, list]:
     try:
         per = {r["customer_code"]: {
             "s": _num(r["sales_12m"]), "g": _num(r["gp_pct_12m"], 1),
+            "gp": _num(r["gp_12m"]),   # cash margin (£ gross profit), 12 months
             "lm": _num(r["sales_last_month"]), "gl": _num(r["gp_pct_last_month"], 1),
             "p3": _num(r["sales_prev3_avg"]), "tr": _num(r["trend_pct"]),
             "mtd": _num(r["sales_mtd"]), "aov": _num(r["aov_last_month"]),
@@ -959,7 +960,12 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         lm_name = names[int(lm["m"][5:]) - 1]
         kpi_sales = (f'<button class="kpi" data-tab="sales"><span class="n">'
                      f'{_money_short(lm["net"])}</span> <span class="l">net sales in '
-                     f'{lm_name} &#183; GP {100.0 * lm["gp"] / lm["net"]:.1f}%</span></button>')
+                     f'{lm_name}</span></button>'
+                     # cash margin: gross profit in £, alongside the % (Rushton's, Nov 2026)
+                     f'<button class="kpi" data-tab="sales"><span class="n">'
+                     f'{_money_short(lm["gp"])}</span> <span class="l">cash margin '
+                     f'(gross profit) in {lm_name} &#183; '
+                     f'{100.0 * lm["gp"] / lm["net"]:.1f}% of sales</span></button>')
         value_note = (f"&#163; sales and gross profit from Fresho to "
                       f"{e(value_months[-1]['end'])}")
     else:
@@ -2112,10 +2118,15 @@ input[type="date"].act { cursor:text; }
     var v = valOf(code);
     if(!v) return '';
     var lf = lastFull();
-    return fact('SALES ' + periodLabel().toUpperCase(), money(v.s)
-             + (v.g !== null ? ' \u00b7 GP ' + v.g + '%' : ''))
+    var lmRow = lf ? (v.ser || []).filter(function(x){ return x[0] === lf.m; })[0] : null;
+    return fact('SALES ' + periodLabel().toUpperCase(), money(v.s))
+      + (v.gp !== null && v.gp !== undefined
+         ? fact('CASH MARGIN ' + periodLabel().toUpperCase(), money(v.gp)
+             + (v.g !== null ? ' (' + v.g + '% GP)' : '')) : '')
       + (lf ? fact('NET SALES ' + monLabel(lf.m).toUpperCase(), money(v.lm)
              + (v.p3 ? ' (3-month avg ' + money(v.p3) + ')' : '')) : '')
+      + (lmRow && lmRow[1] ? fact('CASH MARGIN ' + monLabel(lf.m).toUpperCase(),
+             money(lmRow[2]) + ' (' + Math.round(100 * lmRow[2] / lmRow[1]) + '% GP)') : '')
       + (v.aov ? fact('AVG ORDER VALUE', money(v.aov)) : '');
   }
 
@@ -2278,13 +2289,17 @@ input[type="date"].act { cursor:text; }
       h += tile(moneyK(lf.net), 'net sales in ' + monLabel(lf.m)
         + (p3 ? ' \u00b7 ' + trendHtml(100 * (lf.net - p3) / p3)
            + ' vs prior 3-month avg' : ''));
-      h += tile((100 * lf.gp / lf.net).toFixed(1) + '%',
-                'gross margin in ' + monLabel(lf.m));
+      var p3gp = prev3.length
+        ? prev3.reduce(function(a, m){ return a + m.gp; }, 0) / prev3.length : null;
+      h += tile(moneyK(lf.gp), 'cash margin (gross profit) in ' + monLabel(lf.m)
+        + ' · ' + (100 * lf.gp / lf.net).toFixed(1) + '% of sales'
+        + (p3gp ? ' · ' + trendHtml(100 * (lf.gp - p3gp) / p3gp)
+           + ' vs prior 3-month avg' : ''));
     }
     if(cur.mtd) h += tile(moneyK(cur.net), monLabel(cur.m) + ' to date (to '
       + parseInt(cur.end.slice(8), 10) + ' ' + monLabel(cur.m) + ')');
-    h += tile(moneyK(tot), 'net sales ' + esc(periodLabel()) + ' \u00b7 GP '
-      + (100 * totgp / tot).toFixed(1) + '%');
+    h += tile(moneyK(tot), 'net sales ' + esc(periodLabel()) + ' \u00b7 cash margin '
+      + moneyK(totgp) + ' (' + (100 * totgp / tot).toFixed(1) + '%)');
     kp.innerHTML = h;
 
     var dir = {};
@@ -2312,11 +2327,12 @@ input[type="date"].act { cursor:text; }
     var top = rows.slice().sort(function(a, b){ return b.v.s - a.v.s; }).slice(0, 15);
     document.getElementById('sales-top').innerHTML = table(
       '<th>Account</th><th>Rep</th><th class="num">Sales ' + esc(periodLabel())
-        + '</th><th class="num">GP%</th><th class="num">' + mon
+        + '</th><th class="num">Cash margin</th><th class="num">GP%</th><th class="num">' + mon
         + '</th><th class="num">vs 3-mo avg</th>',
       top.map(function(r){
         return '<tr><td>' + acctBtn(r.d) + '</td><td>' + esc(r.d.r)
           + '</td><td class="num">' + money(r.v.s) + '</td><td class="num">'
+          + money(r.v.gp) + '</td><td class="num">'
           + (r.v.g !== null ? r.v.g + '%' : '') + '</td><td class="num">'
           + money(r.v.lm) + '</td><td class="num">' + trendHtml(r.v.tr) + '</td></tr>';
       }).join(''));
@@ -2325,10 +2341,11 @@ input[type="date"].act { cursor:text; }
       .sort(function(a, b){ return a.v.g - b.v.g; }).slice(0, 10);
     document.getElementById('sales-lowgp').innerHTML = table(
       '<th>Account</th><th>Venue</th><th>Rep</th><th class="num">Sales</th>'
-        + '<th class="num">GP%</th>',
+        + '<th class="num">Cash margin</th><th class="num">GP%</th>',
       low.map(function(r){
         return '<tr><td>' + acctBtn(r.d) + '</td><td>' + esc(r.d.v) + '</td><td>'
           + esc(r.d.r) + '</td><td class="num">' + money(r.v.s)
+          + '</td><td class="num">' + money(r.v.gp)
           + '</td><td class="num">' + r.v.g + '%</td></tr>';
       }).join(''));
 
@@ -2336,18 +2353,19 @@ input[type="date"].act { cursor:text; }
     rows.forEach(function(r){
       var k = r.d.r || '(unassigned)';
       var a = reps[k] = reps[k] || {n: 0, s: 0, gp: 0, lm: 0, p3: 0};
-      a.n += 1; a.s += r.v.s || 0; a.gp += (r.v.s || 0) * (r.v.g || 0) / 100;
+      a.n += 1; a.s += r.v.s || 0; a.gp += r.v.gp || 0;
       a.lm += r.v.lm || 0; a.p3 += r.v.p3 || 0;
     });
     document.getElementById('sales-reps').innerHTML = table(
       '<th>Account manager</th><th class="num">Accounts</th><th class="num">Sales '
-        + esc(periodLabel()) + '</th><th class="num">GP%</th><th class="num">' + mon
-        + '</th><th class="num">vs 3-mo avg</th>',
+        + esc(periodLabel()) + '</th><th class="num">Cash margin</th><th class="num">GP%</th>'
+        + '<th class="num">' + mon + '</th><th class="num">vs 3-mo avg</th>',
       Object.keys(reps).sort(function(a, b){ return reps[b].s - reps[a].s; })
         .map(function(k){
           var a = reps[k];
           return '<tr><td>' + esc(k) + '</td><td class="num">' + a.n
             + '</td><td class="num">' + money(a.s) + '</td><td class="num">'
+            + money(a.gp) + '</td><td class="num">'
             + (a.s ? (100 * a.gp / a.s).toFixed(1) + '%' : '') + '</td><td class="num">'
             + money(a.lm) + '</td><td class="num">'
             + (a.p3 ? trendHtml(100 * (a.lm - a.p3) / a.p3) : '') + '</td></tr>';
