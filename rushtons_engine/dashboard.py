@@ -1007,12 +1007,14 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{VALUE_NOTE}}", value_note)
             .replace("{{SALES_CHART}}", _svg_monthly(all_months))
             .replace("{{HELP}}", help_section.help_html(
-                value_months, str(_rows("select min(delivery_date) as d from orders")[0]["d"])))
-            .replace("{{DATA}}", _safe_json(data)))
+                value_months, str(_rows("select min(delivery_date) as d from orders")[0]["d"]))))
 
     # The page republishes itself to save state, so it carries a copy of its
-    # own source with BOTH markers still intact for the next round.
-    full = HEAD_SRC + frag + TAIL_SRC
+    # own source with ALL markers still intact for the next round. The copy
+    # holds __DATA__ instead of the data: the page puts its own dash-data back
+    # in when it saves, so the (large) data isn't embedded twice.
+    full = HEAD_SRC + frag.replace("{{DATA}}", "__DATA__", 1) + TAIL_SRC
+    frag = frag.replace("{{DATA}}", _safe_json(data), 1)
     # Order matters: substitute the state first, then embed the template last.
     # Embedding first would inject a copy containing __STATE__, and the state
     # replace would then clobber the marker inside that copy - so the page could
@@ -3807,7 +3809,11 @@ input[type="date"].act { cursor:text; }
       // sj() mirrors Python's _safe_json: JSON.stringify alone leaves "</"
       // intact, which would close this very <script> tag when re-embedded.
       var sj = function(o){ return JSON.stringify(o).replace(/<\//g, '<\\/'); };
+      // data first (the template holds __DATA__, not a second copy of it),
+      // then state, then the template itself - see build() in dashboard.py
       var doc = TEMPLATE
+        .replace('__DATA__', function(){
+          return document.getElementById('dash-data').textContent; })
         .replace('__STATE__', function(){ return sj(STATE); })
         .replace('__TEMPLATE__', function(){ return sj(TEMPLATE); });
       return art.publish(doc).then(function(){ say(code, 'Saved for everyone', ctx); },

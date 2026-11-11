@@ -457,11 +457,9 @@ def ingest_line_items_file(conn, path: Path) -> int:
             a[3] += 1
     t = db.sales_daily
     conn.execute(t.delete().where((t.c.sale_date >= start) & (t.c.sale_date <= end)))
-    now = db.now_utc()
     rows = [{"customer_code": c, "sale_date": d, "category": k,
              "net_sales": round(v[0], 2), "cost": round(v[1], 2),
-             "rebate": round(v[2], 2), "lines": v[3],
-             "source_file": path.name, "ingested_at": now}
+             "rebate": round(v[2], 2), "lines": v[3]}
             for (c, d, k), v in acc.items()]
     for i in range(0, len(rows), 5000):
         conn.execute(t.insert(), rows[i:i + 5000])

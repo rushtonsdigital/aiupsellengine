@@ -222,8 +222,7 @@ sales_daily = sa.Table(
     sa.Column("cost", sa.Numeric),                         # sum of cost price x qty
     sa.Column("rebate", sa.Numeric),                       # line total x rebate %
     sa.Column("lines", sa.Integer),
-    sa.Column("source_file", sa.Text),
-    sa.Column("ingested_at", sa.DateTime(timezone=True)),
+    # no source_file / ingested_at per row: they doubled the table's size
 )
 
 # Per-account x product purchase history and a per-account order profile, for

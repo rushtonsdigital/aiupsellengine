@@ -150,9 +150,7 @@ create table if not exists sales_daily (
   net_sales     numeric,
   cost          numeric,
   rebate        numeric,          -- line total x rebate %
-  lines         int,
-  source_file   text,
-  ingested_at   timestamptz,
+  lines         int,              -- no per-row source_file: kept the table small
   primary key (customer_code, sale_date, category)
 );
 
