@@ -1073,7 +1073,8 @@ FRAG_SRC = r"""<title>Rushton's Commercial Dashboard</title>
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
   line-height:1.6; -webkit-font-smoothing:antialiased; }
-.wrap { max-width:1080px; margin:0 auto; padding:2.2rem 1.25rem 4rem; }
+/* full width (Jose, 12 Nov): menu at the far left, content fills the rest */
+.wrap { max-width:none; margin:0; padding:1.4rem 1.5rem 3rem; }
 body { border-top:6px solid var(--accent); }
 .brandmark { color:var(--accent); margin:0 0 .9rem; }
 .brandmark .logo { display:block; height:34px; width:auto; }
@@ -1083,17 +1084,17 @@ h1 { font-family:var(--serif); font-size:28px; font-weight:700; margin:0 0 .3rem
 h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35rem;
   text-wrap:balance; }
 .sub { color:var(--muted); font-size:14px; margin:0 0 1.6rem; }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:12px; margin:0 0 1.6rem; }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px; margin:0 0 1.2rem; }
 .kpi { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
   border-top:4px solid var(--brand2);
-  padding:1rem 1.1rem; cursor:pointer; text-align:left; font:inherit;
+  padding:.65rem .85rem; cursor:pointer; text-align:left; font:inherit;
   color:inherit; }
 .kpi:hover { border-color:var(--accent); }
 .kpi:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.kpi .n { font-family:var(--mono); font-size:30px; font-weight:700; color:var(--accent);
+.kpi .n { font-family:var(--mono); font-size:23px; font-weight:700; color:var(--accent);
   letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1.2; }
-.kpi .l { display:block; font-size:13px; color:var(--muted); line-height:1.45; }
+.kpi .l { display:block; font-size:12px; color:var(--muted); line-height:1.4; }
 .layout { display:block; }
 .nav { display:flex; gap:6px; overflow-x:auto; position:sticky; top:0;
   background:var(--bg); padding:.6rem 0; z-index:5; margin:0 0 1rem; }
@@ -1111,7 +1112,7 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35re
   .nav .ng:first-child { margin-top:0; }
 }
 @media (min-width: 960px) {
-  .layout { display:grid; grid-template-columns:168px minmax(0,1fr); gap:2rem; }
+  .layout { display:grid; grid-template-columns:176px minmax(0,1fr); gap:1.5rem; }
   .nav { flex-direction:column; position:sticky; top:1.2rem; align-self:start;
     overflow:visible; background:none; padding:0; margin:0; }
   .nav button { text-align:left; border-radius:10px; }
@@ -1119,7 +1120,9 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35re
 .section { display:none; }
 .section.on { display:block; }
 .play { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
-  padding:1.4rem 1.5rem; margin:0 0 1.5rem; }
+  padding:1.1rem 1.3rem; margin:0 0 1.2rem; }
+/* on a full-width page, keep single SVG charts from blowing up in height */
+.play > .scroll > svg.chart, .play > svg.chart { max-width:1150px; }
 .tag { display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
   letter-spacing:.11em; color:var(--accent); margin-bottom:.5rem; }
 .lede { font-size:14px; color:var(--muted); margin:0 0 1.1rem; }
@@ -1271,19 +1274,20 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   font-family:var(--mono); letter-spacing:.04em; }
 .sxdates { font-size:13px; align-self:flex-end; padding-bottom:6px; }
 input.sxd { padding:4px 8px; }
-.sxcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-  gap:8px; margin:.4rem 0 1rem; }
+.sxcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr));
+  gap:6px; margin:.4rem 0 1rem; }
 .sxcard { text-align:left; font:inherit; background:var(--surface); color:var(--ink);
-  border:.5px solid var(--line); border-radius:10px; padding:.6rem .75rem; cursor:pointer;
+  border:.5px solid var(--line); border-radius:8px; padding:.4rem .6rem; cursor:pointer;
   display:flex; flex-direction:column; gap:2px; border-top:3px solid transparent; }
 .sxcard:hover { border-color:var(--accent); }
 .sxcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .sxcard.on { border-top-color:var(--accent); background:var(--raise); }
-.sxcard .l { font-size:11.5px; color:var(--muted); }
-.sxcard .n { font-family:var(--mono); font-size:20px; font-weight:700; }
+.sxcard .l { font-size:11px; color:var(--muted); line-height:1.3; }
+.sxcard .n { font-family:var(--mono); font-size:17px; font-weight:700; line-height:1.3; }
 .sxcard.on .n { color:var(--accent); }
-.sxcard .c { font-size:11.5px; }
-.sxchs { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:6px 18px; }
+.sxcard .c { font-size:11px; }
+.sxchs { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:6px 18px; }
+.sxch svg.chart { max-height:260px; }
 .sxct { font-size:12.5px; font-weight:600; margin:.4rem 0 0; }
 .sxl { fill:none; stroke:var(--accent); stroke-width:2; }
 .sxlc { fill:none; stroke:var(--muted); stroke-width:1.5; stroke-dasharray:4 3; }
@@ -1346,6 +1350,7 @@ body:not(.home) .topkpis { display:none; }
   text-overflow:ellipsis; white-space:nowrap; }
 .navtop { display:none; }
 body.navopen { overflow:hidden; }
+@media (max-width: 600px) { .wrap { padding:1rem 1rem 2.5rem; } .play { padding:1rem; } }
 @media (max-width: 959px) {
   .nav { display:none; position:fixed; inset:0; z-index:50; margin:0;
     flex-direction:column; gap:4px; overflow-y:auto; background:var(--bg);
@@ -2345,12 +2350,14 @@ input[type="date"].act { cursor:text; }
   function valOf(code){ return DATA.value ? DATA.value[code] : null; }
   function money(v){
     if(v === null || v === undefined) return '';
-    return '\u00a3' + Math.round(v).toLocaleString('en-GB');
+    var r = Math.round(v);
+    return (r < 0 ? '\u2212' : '') + '\u00a3' + Math.abs(r).toLocaleString('en-GB');
   }
   function moneyK(v){
     if(v === null || v === undefined) return '';
-    if(Math.abs(v) >= 1e6) return '\u00a3' + (v / 1e6).toFixed(2) + 'M';
-    return Math.abs(v) >= 10000 ? '\u00a3' + Math.round(v / 1000) + 'k' : money(v);
+    var sg = v < 0 ? '\u2212' : '', a = Math.abs(v);
+    if(a >= 1e6) return sg + '\u00a3' + (a / 1e6).toFixed(2) + 'M';
+    return a >= 10000 ? sg + '\u00a3' + Math.round(a / 1000) + 'k' : money(v);
   }
   function trendHtml(t){
     if(t === null || t === undefined) return '';
