@@ -114,3 +114,29 @@ def test_missing_days_skip_sundays(on_conn, tmp_path):
     # 2 Nov loaded; 3-10 Nov missing - one export, the Sunday in it is harmless
     assert sales_explorer.missing_days(D(2026, 11, 10)) == [(D(2026, 11, 3), D(2026, 11, 10))]
     assert sales_explorer.missing_days(D(2026, 11, 2)) == []
+
+
+def test_sales_email_periods_and_figures(on_conn, tmp_path):
+    import sales_email
+    p = sales_email.periods(D(2026, 11, 15))
+    assert p["week"] == (D(2026, 11, 9), D(2026, 11, 15))
+    assert p["ly_week"] == (D(2025, 11, 10), D(2025, 11, 16))
+    assert p["mtd"] == (D(2026, 11, 1), D(2026, 11, 15))
+    assert p["prev_mtd"] == (D(2026, 10, 1), D(2026, 10, 15))
+    assert p["ly_mtd"] == (D(2025, 11, 1), D(2025, 11, 15))
+    conn = on_conn
+    add_customer(conn, "R A", "Alpha", sales_rep="Harry (Rushtons)")
+    add_customer(conn, "R C", "Cash Sales", sales_rep="Customer Service (Rushtons)")
+    ingest.ingest_line_items_file(conn, _line_items(tmp_path, "2026-11-02", "2026-11-14", [
+        ("S010. Vegetables - SPLIT", "1-EA", 1, "R A", "2026-11-03", "invoiced", 50, 100, 0),
+        ("S010. Vegetables - SPLIT", "1-EA", 1, "R A", "2026-11-10", "invoiced", 90, 300, 0),
+        ("S010. Vegetables - SPLIT", "1-EA", 1, "R C", "2026-11-10", "invoiced", 1, 999, 0),
+        ("S010. Vegetables - SPLIT", "1-EA", 1, "R A", "2026-11-14", "invoiced", 0, 0, 0),
+    ]))
+    f = sales_email.build(D(2026, 11, 15))
+    assert f["totals"]["week"]["sales"] == 1299 and f["totals"]["prev_week"]["sales"] == 100
+    assert [m["name"] for m in f["movers_up"]] == ["Alpha"]       # cash sales not a mover
+    assert f["movers_up"][0]["change"] == 200
+    assert f["totals"]["mtd"]["sales"] == 1399
+    html_ = sales_email.render(f)
+    assert "{{SUMMARY}}" in html_ and "Alpha" in html_
