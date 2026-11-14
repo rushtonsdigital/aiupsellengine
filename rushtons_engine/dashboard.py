@@ -42,6 +42,7 @@ from pathlib import Path
 import config
 import help_section
 import query
+import sales_explorer
 
 TARGETABLE = list(config.TARGETABLE_CATEGORIES)
 
@@ -835,7 +836,20 @@ def _drilldown(codes, all_weeks, as_of):
     return series, stopped, gaps
 
 
-def build(as_of: date | None = None, state: dict | None = None) -> str:
+def _load_sales_explorer() -> dict | None:
+    """The hidden #reporting section's data (sales_explorer.build). A page build
+    never fails over it: with no daily sales loaded the section says so."""
+    try:
+        return sales_explorer.build()
+    except Exception:                      # noqa: BLE001 - optional preview section
+        log.exception("sales report: not built")
+        return None
+
+
+def build(as_of: date | None = None, state: dict | None = None,
+          preview_nav: bool = False) -> str:
+    """preview_nav=True adds a menu button for the #reporting preview (Jose's
+    private copy); the team's page reaches it only by the #reporting link."""
     decline = _rows(Q_DECLINE)
     winback = _rows(Q_WINBACK)
     gaps_named = _rows(Q_PEER_GAPS)
@@ -947,6 +961,7 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
         "leadVerdictDue": config.LEAD_VERDICT_DUE_DAYS,
         "value": values,
         "valueMonths": value_months,
+        "salesX": _load_sales_explorer(),
         "hist": history,
         "prodNames": product_names,
         "venueNotes": _load_venue_notes(),
@@ -989,18 +1004,22 @@ def build(as_of: date | None = None, state: dict | None = None) -> str:
             .replace("{{GAP_ROWS}}", gap_rows or
                      "<tr><td colspan='5'>No gold-tier peer gaps.</td></tr>")
             .replace("{{REPS_CHART}}", _svg_reps(reps))
+            .replace("{{PREVIEW_NAV}}", '      <button data-tab="reporting">Sales explorer'
+                     ' (preview)</button>\n' if preview_nav else "")
             .replace("{{KPI_SALES}}", kpi_sales)
             .replace("{{LOGO}}", LOGO_SVG)
             .replace("{{LEADS_APP_URL}}", e(config.LEADS_APP_URL))
             .replace("{{VALUE_NOTE}}", value_note)
             .replace("{{SALES_CHART}}", _svg_monthly(all_months))
             .replace("{{HELP}}", help_section.help_html(
-                value_months, str(_rows("select min(delivery_date) as d from orders")[0]["d"])))
-            .replace("{{DATA}}", _safe_json(data)))
+                value_months, str(_rows("select min(delivery_date) as d from orders")[0]["d"]))))
 
     # The page republishes itself to save state, so it carries a copy of its
-    # own source with BOTH markers still intact for the next round.
-    full = HEAD_SRC + frag + TAIL_SRC
+    # own source with ALL markers still intact for the next round. The copy
+    # holds __DATA__ instead of the data: the page puts its own dash-data back
+    # in when it saves, so the (large) data isn't embedded twice.
+    full = HEAD_SRC + frag.replace("{{DATA}}", "__DATA__", 1) + TAIL_SRC
+    frag = frag.replace("{{DATA}}", _safe_json(data), 1)
     # Order matters: substitute the state first, then embed the template last.
     # Embedding first would inject a copy containing __STATE__, and the state
     # replace would then clobber the marker inside that copy - so the page could
@@ -1054,7 +1073,8 @@ FRAG_SRC = r"""<title>Rushton's Commercial Dashboard</title>
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
   line-height:1.6; -webkit-font-smoothing:antialiased; }
-.wrap { max-width:1080px; margin:0 auto; padding:2.2rem 1.25rem 4rem; }
+/* full width (Jose, 12 Nov): menu at the far left, content fills the rest */
+.wrap { max-width:none; margin:0; padding:1.4rem 1.5rem 3rem; }
 body { border-top:6px solid var(--accent); }
 .brandmark { color:var(--accent); margin:0 0 .9rem; }
 .brandmark .logo { display:block; height:34px; width:auto; }
@@ -1064,17 +1084,17 @@ h1 { font-family:var(--serif); font-size:28px; font-weight:700; margin:0 0 .3rem
 h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35rem;
   text-wrap:balance; }
 .sub { color:var(--muted); font-size:14px; margin:0 0 1.6rem; }
-.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:12px; margin:0 0 1.6rem; }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px; margin:0 0 1.2rem; }
 .kpi { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
   border-top:4px solid var(--brand2);
-  padding:1rem 1.1rem; cursor:pointer; text-align:left; font:inherit;
+  padding:.65rem .85rem; cursor:pointer; text-align:left; font:inherit;
   color:inherit; }
 .kpi:hover { border-color:var(--accent); }
 .kpi:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.kpi .n { font-family:var(--mono); font-size:30px; font-weight:700; color:var(--accent);
+.kpi .n { font-family:var(--mono); font-size:23px; font-weight:700; color:var(--accent);
   letter-spacing:-.03em; font-variant-numeric:tabular-nums; line-height:1.2; }
-.kpi .l { display:block; font-size:13px; color:var(--muted); line-height:1.45; }
+.kpi .l { display:block; font-size:12px; color:var(--muted); line-height:1.4; }
 .layout { display:block; }
 .nav { display:flex; gap:6px; overflow-x:auto; position:sticky; top:0;
   background:var(--bg); padding:.6rem 0; z-index:5; margin:0 0 1rem; }
@@ -1092,7 +1112,7 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35re
   .nav .ng:first-child { margin-top:0; }
 }
 @media (min-width: 960px) {
-  .layout { display:grid; grid-template-columns:168px minmax(0,1fr); gap:2rem; }
+  .layout { display:grid; grid-template-columns:176px minmax(0,1fr); gap:1.5rem; }
   .nav { flex-direction:column; position:sticky; top:1.2rem; align-self:start;
     overflow:visible; background:none; padding:0; margin:0; }
   .nav button { text-align:left; border-radius:10px; }
@@ -1100,7 +1120,9 @@ h2 { font-family:var(--serif); font-size:20px; font-weight:700; margin:0 0 .35re
 .section { display:none; }
 .section.on { display:block; }
 .play { background:var(--surface); border:.5px solid var(--line); border-radius:12px;
-  padding:1.4rem 1.5rem; margin:0 0 1.5rem; }
+  padding:1.1rem 1.3rem; margin:0 0 1.2rem; }
+/* on a full-width page, keep single SVG charts from blowing up in height */
+.play > .scroll > svg.chart, .play > svg.chart { max-width:1150px; }
 .tag { display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
   letter-spacing:.11em; color:var(--accent); margin-bottom:.5rem; }
 .lede { font-size:14px; color:var(--muted); margin:0 0 1.1rem; }
@@ -1246,6 +1268,32 @@ input.act:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .cpane { display:none; }
 .cpane.on { display:block; }
 .dirbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:.4rem; }
+.sxbar { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:.2rem 0 .8rem; }
+.sxbar .ctabs { margin:0; flex-wrap:wrap; }
+.sxf { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted);
+  font-family:var(--mono); letter-spacing:.04em; }
+.sxdates { font-size:13px; align-self:flex-end; padding-bottom:6px; }
+input.sxd { padding:4px 8px; }
+.sxcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr));
+  gap:6px; margin:.4rem 0 1rem; }
+.sxcard { text-align:left; font:inherit; background:var(--surface); color:var(--ink);
+  border:.5px solid var(--line); border-radius:8px; padding:.4rem .6rem; cursor:pointer;
+  display:flex; flex-direction:column; gap:2px; border-top:3px solid transparent; }
+.sxcard:hover { border-color:var(--accent); }
+.sxcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.sxcard.on { border-top-color:var(--accent); background:var(--raise); }
+.sxcard .l { font-size:11px; color:var(--muted); line-height:1.3; }
+.sxcard .n { font-family:var(--mono); font-size:17px; font-weight:700; line-height:1.3; }
+.sxcard.on .n { color:var(--accent); }
+.sxcard .c { font-size:11px; }
+.sxchs { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:6px 18px; }
+.sxch svg.chart { max-height:260px; }
+.sxct { font-size:12.5px; font-weight:600; margin:.4rem 0 0; }
+.sxl { fill:none; stroke:var(--accent); stroke-width:2; }
+.sxlc { fill:none; stroke:var(--muted); stroke-width:1.5; stroke-dasharray:4 3; }
+.sxp { fill:var(--accent); }
+.sxtot td { border-top:1px solid var(--ink); }
+.sxgo { font-size:12px; opacity:.7; }
 .drow { border-bottom:.5px solid var(--line); }
 .dmeta { font-size:11.5px; color:var(--muted); white-space:nowrap; }
 .contact { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px;
@@ -1302,6 +1350,7 @@ body:not(.home) .topkpis { display:none; }
   text-overflow:ellipsis; white-space:nowrap; }
 .navtop { display:none; }
 body.navopen { overflow:hidden; }
+@media (max-width: 600px) { .wrap { padding:1rem 1rem 2.5rem; } .play { padding:1rem; } }
 @media (max-width: 959px) {
   .nav { display:none; position:fixed; inset:0; z-index:50; margin:0;
     flex-direction:column; gap:4px; overflow-y:auto; background:var(--bg);
@@ -1404,7 +1453,7 @@ input[type="date"].act { cursor:text; }
       </div>
       <span class="ng">CUSTOMERS</span>
       <button data-tab="sales">Sales &amp; margin</button>
-      <button data-tab="accounts">Accounts</button>
+{{PREVIEW_NAV}}      <button data-tab="accounts">Accounts</button>
       <button data-tab="contacts">Contacts</button>
       <span class="ng">ACQUIRE</span>
       <button data-tab="leads">Leads &#8599;</button>
@@ -1520,6 +1569,94 @@ input[type="date"].act { cursor:text; }
         <div class="scroll" id="sales-lowgp"></div>
         <h3>By account manager</h3>
         <div class="scroll" id="sales-reps"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-reporting">
+      <div class="play">
+        <div class="tag">PREVIEW &#183; SALES EXPLORER</div>
+        <h2>Sales explorer</h2>
+        <p class="lede">Pick the dates and what to compare them with; switch metrics on
+          and off; split the table by account manager, customer, category, venue
+          or tier. Daily figures from Fresho's invoice lines (price and cost on
+          every line).<br>A preview for feedback &#8212; not in the menu yet.</p>
+        <div class="sxbar">
+          <label class="sxf"><span>Dates</span>
+            <select class="act" id="sx-preset" aria-label="Date range">
+              <option value="yday">Latest day</option>
+              <option value="last7">Last 7 days</option>
+              <option value="lastweek">Last week (Mon&#8211;Sun)</option>
+              <option value="last4w">Last 4 weeks</option>
+              <option value="mtd">Month to date</option>
+              <option value="lastmonth">Last month</option>
+              <option value="last3m">Last 3 months</option>
+              <option value="fytd">Financial year to date (Nov&#8211;Oct)</option>
+              <option value="ytd">Calendar year to date</option>
+              <option value="last12m">Last 12 months</option>
+              <option value="custom">Custom&#8230;</option>
+            </select></label>
+          <span class="sxdates" id="sx-range"></span>
+          <label class="sxf"><span>Compare with</span>
+            <select class="act" id="sx-cmp" aria-label="Compare with">
+              <option value="prev">Previous period</option>
+              <option value="ly">Same period last year</option>
+              <option value="custom">Custom&#8230;</option>
+              <option value="none">No comparison</option>
+            </select></label>
+          <span class="sxdates" id="sx-crange"></span>
+        </div>
+        <div class="sxbar">
+          <label class="sxf"><span>Account manager</span>
+            <select class="act" id="sx-rep" aria-label="Account manager"></select></label>
+          <label class="sxf"><span>Venue type</span>
+            <select class="act" id="sx-venue" aria-label="Venue type"></select></label>
+          <label class="sxf"><span>Tier</span>
+            <select class="act" id="sx-tier" aria-label="Tier">
+              <option value="">All tiers</option><option value="gold">Gold</option>
+              <option value="silver">Silver</option><option value="bronze">Bronze</option>
+            </select></label>
+          <span id="sx-custf"></span>
+        </div>
+        <p class="said">Metrics &#8212; click to add or remove; each shows the change
+          against the comparison.</p>
+        <div class="sxcards" id="sx-cards"></div>
+        <div id="sx-note"></div>
+        <div class="sxbar">
+          <div class="ctabs" id="sx-grain" role="group" aria-label="Chart by"></div>
+        </div>
+        <div id="sx-charts"></div>
+        <h3>Breakdown</h3>
+        <div class="sxbar">
+          <div class="ctabs" id="sx-dim" role="group" aria-label="Split by"></div>
+          <input class="act noteinput" id="sx-q" type="search"
+                 placeholder="Search&#8230;" aria-label="Search the table">
+        </div>
+        <div class="scroll" id="sx-table"></div>
+        <details class="help" style="margin-top:1.2rem"><summary>How these numbers
+          are worked out</summary><div class="helpbody">
+          <ul>
+          <li><b>Net sales</b> = the invoiced line totals after discounts and credits
+            &#8212; it matches Fresho's Sales Totals and Gross Profit Margin report
+            to the pound. <b>Cost</b> = cost price &#215; quantity on each line.
+            <b>Gross profit (cash margin)</b> = net sales &#8722; cost; <b>GP%</b> =
+            that as a share of net sales.</li>
+          <li><b>Rebates</b> = each line's total &#215; the customer's rebate % in
+            Fresho (an estimate of what is paid back later); <b>GP after
+            rebates</b> takes them off. <b>Net profit</b> isn't available &#8212; it
+            needs overheads (wages, vans, rent) that aren't in Fresho.</li>
+          <li><b>Deliveries</b> = days a customer received an order;
+            <b>accounts buying</b> = customers with sales in the period;
+            <b>average delivery</b> = net sales &#247; deliveries.</li>
+          <li><b>Previous period</b> = the same number of days just before (for a
+            month: the previous month, same dates). <b>Same period last year</b>
+            = 52 weeks earlier for day and week ranges, so the days of the week
+            line up; the same calendar dates for month and year ranges.</li>
+          <li>Account manager is each account's <b>current</b> manager, applied to
+            every date (Fresho keeps no history of who managed an account when).
+            Splitting by category uses the account-manager filter only.</li>
+          <li>Daily data starts on 29 September 2025 (Rushton's moved onto Fresho in
+            October 2025), so a comparison before then is shown as partial.</li>
+          </ul></div></details>
       </div>
     </div>
 
@@ -1705,7 +1842,7 @@ input[type="date"].act { cursor:text; }
   }
 
   var TABS = ['actions','protect','recover','grow','manage','accounts',
-              'leads','contacts','leadrecs','sales','help'];
+              'leads','contacts','leadrecs','sales','help','reporting'];
   var curAcct = null;
   var hamb = document.getElementById('hamb');
   var sitenav = document.getElementById('sitenav');
@@ -1731,6 +1868,8 @@ input[type="date"].act { cursor:text; }
     var b = document.querySelector('.nav button[data-tab="' + tab + '"]');
     var lbl = document.getElementById('mcur');
     if(lbl && b) lbl.textContent = b.firstChild.textContent;
+    // #reporting is a preview reached by link only - no menu button yet
+    else if(lbl && tab === 'reporting') lbl.textContent = 'Sales explorer (preview)';
     closeNav();
   }
   function hidePages(){
@@ -2211,12 +2350,14 @@ input[type="date"].act { cursor:text; }
   function valOf(code){ return DATA.value ? DATA.value[code] : null; }
   function money(v){
     if(v === null || v === undefined) return '';
-    return '\u00a3' + Math.round(v).toLocaleString('en-GB');
+    var r = Math.round(v);
+    return (r < 0 ? '\u2212' : '') + '\u00a3' + Math.abs(r).toLocaleString('en-GB');
   }
   function moneyK(v){
     if(v === null || v === undefined) return '';
-    if(Math.abs(v) >= 1e6) return '\u00a3' + (v / 1e6).toFixed(2) + 'M';
-    return Math.abs(v) >= 10000 ? '\u00a3' + Math.round(v / 1000) + 'k' : money(v);
+    var sg = v < 0 ? '\u2212' : '', a = Math.abs(v);
+    if(a >= 1e6) return sg + '\u00a3' + (a / 1e6).toFixed(2) + 'M';
+    return a >= 10000 ? sg + '\u00a3' + Math.round(a / 1000) + 'k' : money(v);
   }
   function trendHtml(t){
     if(t === null || t === undefined) return '';
@@ -2371,6 +2512,474 @@ input[type="date"].act { cursor:text; }
             + (a.p3 ? trendHtml(100 * (a.lm - a.p3) / a.p3) : '') + '</td></tr>';
         }).join(''));
   }
+
+  // --- Sales explorer (preview, #reporting) -------------------------------
+  // DATA.salesX (sales_explorer.build): cd = [day, cust, sales, gp, lines, rebate],
+  // kd = [day, cat, rep, sales, gp, lines, rebate, customer-days]; day = index
+  // from SX.first. Every range, comparison and grouping is worked out here.
+  var SX = DATA.salesX;
+  var SXM = [
+    ['sales', 'Net sales', 'gbp'], ['gp', 'Gross profit (cash margin)', 'gbp'],
+    ['gpp', 'GP %', 'pct'], ['cost', 'Cost of goods', 'gbp'],
+    ['rebate', 'Rebates (est.)', 'gbp'], ['gpr', 'GP after rebates', 'gbp'],
+    ['del', 'Deliveries', 'n'], ['acc', 'Accounts buying', 'n'],
+    ['avg', 'Average delivery', 'gbp'], ['lines', 'Order lines', 'n']];
+  var SXDIM = [['rep', 'Account manager'], ['cust', 'Customer'], ['cat', 'Category'],
+               ['venue', 'Venue type'], ['tier', 'Tier']];
+  var X = {preset: 'lastweek', from: 0, to: 0, cmp: 'ly', cfrom: 0, cto: 0,
+           grain: 'auto', metrics: ['sales', 'gp'], dim: 'rep',
+           rep: '', venue: '', tier: '', cust: '', q: '', sort: null, desc: true,
+           all: false};
+  var SX0 = SX ? Date.UTC(+SX.first.slice(0, 4), +SX.first.slice(5, 7) - 1,
+                          +SX.first.slice(8, 10)) : 0;
+  function sxDate(i){ return new Date(SX0 + i * 864e5); }
+  function sxIdx(dt){ return Math.round((dt.getTime() - SX0) / 864e5); }
+  function sxIso(i){ return sxDate(i).toISOString().slice(0, 10); }
+  function sxFromIso(s){
+    return sxIdx(new Date(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)))); }
+  function sxYmd(y, m, d){ return sxIdx(new Date(Date.UTC(y, m, d))); }
+  function sxLbl(i){
+    var d = sxDate(i);
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+  function sxRangeLbl(a, b){
+    if(a === b) return sxLbl(a);
+    var da = sxDate(a), db = sxDate(b);
+    var y = da.getUTCFullYear() !== db.getUTCFullYear();
+    return da.getUTCDate() + ' ' + MONTHS[da.getUTCMonth()] + (y ? ' ' + da.getUTCFullYear() : '')
+      + ' \u2013 ' + sxLbl(b);
+  }
+  function sxMonthEnd(y, m){ return sxYmd(y, m + 1, 0); }
+  function sxPresetRange(p){
+    var L = SX.days - 1, ld = sxDate(L);
+    var y = ld.getUTCFullYear(), m = ld.getUTCMonth(), wd = (ld.getUTCDay() + 6) % 7;
+    // last complete Mon-Sun week: Sundays have no deliveries, so data through
+    // Saturday completes the week
+    var wEnd = wd >= 5 ? L + (6 - wd) : L - wd - 1;
+    switch(p){
+      case 'yday': return [L, L];
+      case 'last7': return [L - 6, L];
+      case 'lastweek': return [wEnd - 6, wEnd];
+      case 'last4w': return [wEnd - 27, wEnd];
+      case 'mtd': return [sxYmd(y, m, 1), L];
+      case 'lastmonth': return [sxYmd(y, m - 1, 1), sxMonthEnd(y, m - 1)];
+      case 'last3m': return [sxYmd(y, m - 3, 1), sxMonthEnd(y, m - 1)];
+      case 'fytd': return [sxYmd(m >= 10 ? y : y - 1, 10, 1), L];
+      case 'ytd': return [sxYmd(y, 0, 1), L];
+      case 'last12m': return [L - 364, L];
+    }
+    return [X.from, X.to];
+  }
+  var SX_WEEKLIKE = {yday: 1, last7: 1, lastweek: 1, last4w: 1, last12m: 1};
+  function sxCmpRange(){
+    var a = X.from, b = X.to, len = b - a + 1;
+    if(X.cmp === 'none') return null;
+    if(X.cmp === 'custom') return [X.cfrom, X.cto];
+    var da = sxDate(a), db = sxDate(b);
+    var monthly = !SX_WEEKLIKE[X.preset] && X.preset !== 'custom'
+      && da.getUTCDate() === 1;
+    if(X.cmp === 'ly'){
+      if(!monthly) return [a - 364, b - 364];
+      var ly = function(d){
+        var t = new Date(Date.UTC(d.getUTCFullYear() - 1, d.getUTCMonth(), d.getUTCDate()));
+        if(t.getUTCMonth() !== d.getUTCMonth()) t = new Date(Date.UTC(d.getUTCFullYear() - 1,
+          d.getUTCMonth() + 1, 0));
+        return sxIdx(t); };
+      return [ly(da), ly(db)];
+    }
+    if(monthly && X.preset !== 'last3m' && X.preset !== 'fytd' && X.preset !== 'ytd'){
+      // a month (or month to date) -> the previous month, same dates
+      var pm = da.getUTCMonth() - 1, py = da.getUTCFullYear();
+      var pe = sxMonthEnd(py, pm);
+      var full = b === sxMonthEnd(db.getUTCFullYear(), db.getUTCMonth());
+      return [sxYmd(py, pm, 1), full ? pe : Math.min(sxYmd(py, pm, db.getUTCDate()), pe)];
+    }
+    return [a - len, a - 1];
+  }
+  function sxCust(i){ return SX.customers[i]; }   // [code, name, rep, venue, tier, excl]
+  function sxKeep(ci){
+    var c = sxCust(ci);
+    return (!X.rep || SX.reps[c[2]] === X.rep) && (!X.venue || c[3] === X.venue)
+      && (!X.tier || c[4] === X.tier) && (!X.cust || c[0] === X.cust);
+  }
+  function sxLower(arr, d){        // first row with day >= d (rows sorted by day)
+    var lo = 0, hi = arr.length;
+    while(lo < hi){ var mid = (lo + hi) >> 1; if(arr[mid][0] < d) lo = mid + 1; else hi = mid; }
+    return lo;
+  }
+  function sxZero(){ return {s: 0, g: 0, l: 0, r: 0, d: 0, acc: {}}; }
+  function sxAdd(t, s, g, l, r, d, ci){
+    t.s += s; t.g += g; t.l += l; t.r += r; t.d += d;
+    if(ci !== null && s > 0) t.acc[ci] = 1;
+  }
+  function sxVal(t, k){
+    if(!t) return null;
+    switch(k){
+      case 'sales': return t.s; case 'gp': return t.g; case 'cost': return t.s - t.g;
+      case 'gpp': return t.s ? 100 * t.g / t.s : null;
+      case 'rebate': return t.r; case 'gpr': return t.g - t.r;
+      case 'del': return t.d; case 'lines': return t.l;
+      case 'acc': return t.accN !== undefined ? t.accN : Object.keys(t.acc).length;
+      case 'avg': return t.d ? t.s / t.d : null;
+    }
+    return null;
+  }
+  // aggregate a range: key(row) -> group key ('' for the total); bucket(day) optional
+  function sxAgg(a, b, keyFn, useCats){
+    var out = {};
+    if(useCats){
+      for(var i = sxLower(SX.kd, a); i < SX.kd.length && SX.kd[i][0] <= b; i++){
+        var r = SX.kd[i];
+        if(X.rep && SX.reps[r[2]] !== X.rep) continue;
+        var k = keyFn(r);
+        var t = out[k] = out[k] || sxZero();
+        sxAdd(t, r[3], r[4], r[5], r[6], r[7], null);
+        t.accN = null;
+      }
+      return out;
+    }
+    for(var j = sxLower(SX.cd, a); j < SX.cd.length && SX.cd[j][0] <= b; j++){
+      var q = SX.cd[j];
+      if(!sxKeep(q[1])) continue;
+      var kk = keyFn(q);
+      var tt = out[kk] = out[kk] || sxZero();
+      sxAdd(tt, q[2], q[3], q[4], q[5], 1, q[1]);
+    }
+    return out;
+  }
+  function sxFmt(k, v){
+    if(v === null || v === undefined) return '\u2014';
+    var unit = SXM.filter(function(m){ return m[0] === k; })[0][2];
+    if(unit === 'pct') return v.toFixed(1) + '%';
+    if(unit === 'n') return Math.round(v).toLocaleString('en-GB');
+    return money(v);
+  }
+  function sxShort(k, v){
+    if(v === null || v === undefined) return '\u2014';
+    var unit = SXM.filter(function(m){ return m[0] === k; })[0][2];
+    if(unit === 'gbp') return moneyK(v);
+    return sxFmt(k, v);
+  }
+  function sxChg(k, a, b){
+    if(a === null || b === null || a === undefined || b === undefined) return '';
+    if(k === 'gpp'){
+      var dp = a - b;
+      return '<span class="' + (dp < 0 ? 'down' : 'up') + '">' + (dp > 0 ? '+' : '')
+        + dp.toFixed(1) + ' pts</span>';
+    }
+    if(!b) return a ? '<span class="up">new</span>' : '';
+    var pc = 100 * (a - b) / Math.abs(b);
+    var bad = k === 'cost' || k === 'rebate' ? pc > 0 : pc < 0;
+    return '<span class="' + (bad ? 'down' : 'up') + '">' + (pc > 0 ? '+' : '')
+      + (Math.abs(pc) < 10 ? pc.toFixed(1) : Math.round(pc)) + '%</span>';
+  }
+  function sxBucket(i){
+    var g = X.grainEff;
+    if(g === 'day') return i;
+    var d = sxDate(i);
+    if(g === 'week') return i - ((d.getUTCDay() + 6) % 7);
+    return sxYmd(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  }
+  function sxBucketLbl(i){
+    var d = sxDate(i);
+    if(X.grainEff === 'month') return MONTHS[d.getUTCMonth()] + ' ' + String(d.getUTCFullYear()).slice(2);
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()];
+  }
+  function sxChart(k, cur, cmp, keys, ckeys){
+    var label = SXM.filter(function(m){ return m[0] === k; })[0][1];
+    var W = 640, H = 170, pl = 52, pr = 10, pt = 12, pb = 24, n = keys.length;
+    var ys = keys.map(function(b){ return sxVal(cur[b], k); });
+    var yc = ckeys ? ckeys.map(function(b){ return sxVal(cmp[b], k); }) : [];
+    var all = ys.concat(yc).filter(function(v){ return v !== null; });
+    var mx = all.length ? Math.max.apply(null, all) : 0;
+    var mn = Math.min(0, all.length ? Math.min.apply(null, all) : 0);
+    if(mx === mn) mx = mn + 1;
+    var x = function(i){ return pl + (n <= 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1)); };
+    var y = function(v){ return pt + (H - pt - pb) * (1 - (v - mn) / (mx - mn)); };
+    var s = '<div class="sxch"><div class="sxct">' + esc(label) + '</div>'
+      + '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="'
+      + esc(label) + ' over time">';
+    [0, .5, 1].forEach(function(f){
+      var v = mn + (mx - mn) * f, yy = y(v);
+      s += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + yy.toFixed(1) + '" y2="'
+        + yy.toFixed(1) + '" stroke="var(--grid)"/><text class="tick" x="' + (pl - 6) + '" y="'
+        + (yy + 3).toFixed(1) + '" text-anchor="end">' + sxShort(k, v) + '</text>';
+    });
+    function path(vals, cls){
+      var d = '', pen = false;
+      vals.forEach(function(v, i){
+        if(v === null){ pen = false; return; }
+        d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); pen = true; });
+      return d ? '<path d="' + d + '" class="' + cls + '"/>' : '';
+    }
+    if(ckeys) s += path(yc.slice(0, n), 'sxlc');
+    s += path(ys, 'sxl');
+    var step = Math.max(1, Math.ceil(n / 8));
+    keys.forEach(function(b, i){
+      if(ys[i] !== null)
+        s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(ys[i]).toFixed(1)
+          + '" r="' + (n > 40 ? 1.5 : 2.5) + '" class="sxp"><title>' + sxBucketLbl(b)
+          + ': ' + sxFmt(k, ys[i]) + (ckeys && i < yc.length && yc[i] !== null
+            ? ' (compare ' + sxBucketLbl(ckeys[i]) + ': ' + sxFmt(k, yc[i]) + ')' : '')
+          + '</title></circle>';
+      if(i % step === 0 || i === n - 1)
+        s += '<text class="axis" x="' + x(i).toFixed(1) + '" y="' + (H - 6)
+          + '" text-anchor="middle">' + sxBucketLbl(b) + '</text>';
+    });
+    return s + '</svg></div>';
+  }
+  function sxOpts(sel, list, cur, allLbl){
+    sel.innerHTML = '<option value="">' + allLbl + '</option>' + list.map(function(v){
+      return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>'
+        + esc(v) + '</option>'; }).join('');
+  }
+  function renderReport(){
+    var host = document.getElementById('sx-cards');
+    if(!host) return;
+    if(!SX){
+      host.innerHTML = '<p class="said">No daily sales loaded yet (Fresho \u201cSales Line'
+        + ' Items\u201d export).</p>';
+      return;
+    }
+    if(X.preset !== 'custom'){
+      var pr = sxPresetRange(X.preset); X.from = pr[0]; X.to = pr[1];
+    }
+    // the latest day with data; a Sunday right after it counts (no deliveries)
+    var sxMax = SX.days - 1 + (sxDate(SX.days).getUTCDay() === 0 ? 1 : 0);
+    X.from = Math.max(0, Math.min(X.from, sxMax));
+    X.to = Math.max(X.from, Math.min(X.to, sxMax));
+    var cr = sxCmpRange();
+    if(cr && X.cmp !== 'custom'){ X.cfrom = cr[0]; X.cto = cr[1]; }
+    // a comparison wholly before the first day of data can't be compared
+    var crGone = cr && cr[1] < 0;
+    var len = X.to - X.from + 1;
+    X.grainEff = X.grain !== 'auto' ? X.grain : (len <= 35 ? 'day' : len <= 190 ? 'week' : 'month');
+
+    // controls
+    document.getElementById('sx-preset').value = X.preset;
+    document.getElementById('sx-cmp').value = X.cmp;
+    var dateIn = function(id, v, lo){
+      return '<input class="act sxd" type="date" id="' + id + '" value="' + sxIso(v)
+        + '" min="' + sxIso(lo) + '" max="' + sxIso(SX.days - 1) + '">'; };
+    document.getElementById('sx-range').innerHTML = X.preset === 'custom'
+      ? dateIn('sx-from', X.from, 0) + ' \u2013 ' + dateIn('sx-to', X.to, 0)
+      : esc(sxRangeLbl(X.from, X.to)) + ' <span class="muted">(' + len + ' days)</span>';
+    document.getElementById('sx-crange').innerHTML = !cr ? ''
+      : X.cmp === 'custom' ? dateIn('sx-cfrom', X.cfrom, -400) + ' \u2013 ' + dateIn('sx-cto', X.cto, -400)
+      : esc(sxRangeLbl(cr[0], cr[1]));
+    sxOpts(document.getElementById('sx-rep'), SX.reps, X.rep, 'All account managers');
+    var venues = {};
+    SX.customers.forEach(function(c){ venues[c[3]] = 1; });
+    sxOpts(document.getElementById('sx-venue'), Object.keys(venues).sort(), X.venue, 'All venue types');
+    document.getElementById('sx-tier').value = X.tier;
+    var cf = document.getElementById('sx-custf');
+    var cname = X.cust ? SX.customers.filter(function(c){ return c[0] === X.cust; })[0] : null;
+    cf.innerHTML = cname ? '<button class="act" data-sxclear="cust">Customer: '
+      + esc(cname[1]) + ' \u2715</button>' : '';
+
+    // totals
+    var tot = sxAgg(X.from, X.to, function(){ return ''; })[''] || sxZero();
+    var crShown = cr;
+    if(crGone) cr = null;
+    var ctot = cr ? (sxAgg(cr[0], cr[1], function(){ return ''; })[''] || sxZero()) : null;
+    host.innerHTML = SXM.map(function(m){
+      var on = X.metrics.indexOf(m[0]) >= 0;
+      var v = sxVal(tot, m[0]), c = ctot ? sxVal(ctot, m[0]) : null;
+      return '<button class="sxcard' + (on ? ' on' : '') + '" data-sxm="' + m[0]
+        + '" aria-pressed="' + on + '"><span class="l">' + m[1] + '</span><span class="n">'
+        + sxShort(m[0], v) + '</span><span class="c">' + (ctot ? sxChg(m[0], v, c)
+        + ' <span class="muted">vs ' + sxShort(m[0], c) + '</span>' : '&nbsp;')
+        + '</span></button>';
+    }).join('');
+    var note = [];
+    // a loaded-data hole (a missed weekly export) must not read as a real drop
+    if(!SX.has){ SX.has = {}; SX.cd.forEach(function(r){ SX.has[r[0]] = 1; }); }
+    var holes = function(a, b){
+      var n = 0;
+      for(var i = Math.max(a, 0); i <= Math.min(b, SX.days - 1); i++)
+        if(!SX.has[i] && sxDate(i).getUTCDay() !== 0) n++;
+      return n; };
+    var hc = holes(X.from, X.to), hp = cr ? holes(cr[0], cr[1]) : 0;
+    if(hc) note.push(hc + ' delivery day(s) in ' + sxRangeLbl(X.from, X.to)
+      + ' have no data loaded (a missed Fresho export, or a bank holiday) — check before reading the totals.');
+    if(hp) note.push(hp + ' delivery day(s) in the comparison have no data loaded (a missed'
+      + ' Fresho export, or a bank holiday) — the change shown may be overstated.');
+    if(crGone) note.push('Nothing to compare: ' + sxRangeLbl(crShown[0], crShown[1])
+      + ' is before daily data begins (' + sxLbl(0) + ').');
+    if(cr && cr[0] < 0) note.push('The comparison starts before daily data begins ('
+      + sxLbl(0) + '), so it only covers part of the period.');
+    var dd = function(a, b){ var n = 0; for(var i = a; i <= b; i++) if(sxDate(i).getUTCDay() !== 0) n++; return n; };
+    if(cr && dd(X.from, X.to) !== dd(cr[0], cr[1]))
+      note.push(sxRangeLbl(X.from, X.to) + ' has ' + dd(X.from, X.to) + ' delivery days; the comparison has '
+        + dd(cr[0], cr[1]) + ' \u2014 the average delivery and per-day figures are the fairer read.');
+    if(X.dim === 'cat' && (X.venue || X.tier || X.cust))
+      note.push('Split by category uses the account-manager filter only; venue, tier and'
+        + ' customer filters don\u2019t apply to it.');
+    document.getElementById('sx-note').innerHTML = note.map(function(t){
+      return '<p class="note">' + esc(t) + '</p>'; }).join('');
+
+    // charts (one per selected metric; comparison dashed, aligned bucket by bucket)
+    document.getElementById('sx-grain').innerHTML = [['auto', 'Auto'], ['day', 'Day'],
+      ['week', 'Week'], ['month', 'Month']].map(function(g){
+        return '<button data-sxg="' + g[0] + '" aria-current="' + (X.grain === g[0]) + '">'
+          + g[1] + (g[0] === 'auto' && X.grain === 'auto' ? ' (' + X.grainEff + ')' : '')
+          + '</button>'; }).join('');
+    var curB = sxAgg(X.from, X.to, function(r){ return sxBucket(r[0]); });
+    var keys = [], seen = {};
+    for(var i = X.from; i <= X.to; i++){
+      var bk = sxBucket(i);
+      if(!seen[bk] && (X.grainEff !== 'day' || sxDate(i).getUTCDay() !== 0 || curB[bk])){
+        seen[bk] = 1; keys.push(bk); }
+    }
+    var cmpB = null, ckeys = null;
+    if(cr){
+      cmpB = sxAgg(cr[0], cr[1], function(r){ return sxBucket(r[0]); });
+      ckeys = []; var cs = {};
+      for(var j = cr[0]; j <= cr[1]; j++){
+        var ck = sxBucket(j);
+        if(!cs[ck] && (X.grainEff !== 'day' || sxDate(j).getUTCDay() !== 0 || cmpB[ck])){
+          cs[ck] = 1; ckeys.push(ck); }
+      }
+    }
+    document.getElementById('sx-charts').innerHTML = '<p class="said">Solid = '
+      + esc(sxRangeLbl(X.from, X.to)) + (cr ? '; dashed = ' + esc(sxRangeLbl(cr[0], cr[1])) : '')
+      + '. Hover a point for the figures.</p><div class="sxchs">'
+      + X.metrics.map(function(k){ return sxChart(k, curB, cmpB, keys, ckeys); }).join('')
+      + '</div>';
+
+    // breakdown table
+    document.getElementById('sx-dim').innerHTML = SXDIM.map(function(d){
+      return '<button data-sxdim="' + d[0] + '" aria-current="' + (X.dim === d[0]) + '">'
+        + d[1] + '</button>'; }).join('');
+    var useCats = X.dim === 'cat';
+    var keyFn = useCats ? function(r){ return SX.cats[r[1]]; } : function(r){
+      var c = sxCust(r[1]);
+      return X.dim === 'rep' ? SX.reps[c[2]] : X.dim === 'venue' ? c[3]
+        : X.dim === 'tier' ? (c[4] || '(none)') : c[0]; };
+    var curG = sxAgg(X.from, X.to, keyFn, useCats);
+    var cmpG = cr ? sxAgg(cr[0], cr[1], keyFn, useCats) : {};
+    var names = {};
+    Object.keys(curG).concat(Object.keys(cmpG)).forEach(function(k){ names[k] = 1; });
+    var ms = X.metrics.filter(function(k){ return !(useCats && k === 'acc'); });
+    var sortK = X.sort && ms.indexOf(X.sort.replace(/^c:|^d:/, '')) >= 0 ? X.sort : ms[0];
+    var q = X.q.toLowerCase();
+    var custName = function(code){
+      var c = SX.customers.filter(function(x){ return x[0] === code; })[0];
+      return c ? c[1] : code; };
+    var rows = Object.keys(names).map(function(k){
+      return {k: k, n: X.dim === 'cust' ? custName(k) : k, cur: curG[k] || null,
+              cmp: cmpG[k] || null}; })
+      .filter(function(r){ return !q || r.n.toLowerCase().indexOf(q) >= 0; });
+    var sv = function(r){
+      if(sortK === 'name') return r.n.toLowerCase();
+      var base = sortK.replace(/^c:|^d:/, '');
+      var a = sxVal(r.cur, base), b = sxVal(r.cmp, base);
+      if(sortK.indexOf('d:') === 0) return (a || 0) - (b || 0);
+      if(sortK.indexOf('c:') === 0) return b === null ? -1e18 : b;
+      return a === null ? -1e18 : a;
+    };
+    rows.sort(function(a, b){
+      var va = sv(a), vb = sv(b);
+      var o = va < vb ? -1 : va > vb ? 1 : 0;
+      return X.desc ? -o : o; });
+    var shown = X.all ? rows : rows.slice(0, 50);
+    function th(key, label, num){
+      var on = sortK === key;
+      return '<th data-sxsort="' + key + '"' + (num ? ' class="num"' : '') + '>' + label
+        + (on ? (X.desc ? ' \u25be' : ' \u25b4') : '') + '</th>'; }
+    var head = th('name', esc(SXDIM.filter(function(d){ return d[0] === X.dim; })[0][1]));
+    ms.forEach(function(k){
+      var lbl = SXM.filter(function(m){ return m[0] === k; })[0][1];
+      head += th(k, esc(lbl), 1);
+      if(cr) head += th('c:' + k, 'Compare', 1) + th('d:' + k, 'Change', 1);
+    });
+    function cells(t, c){
+      return ms.map(function(k){
+        var a = sxVal(t, k), b = c ? sxVal(c, k) : null;
+        return '<td class="num">' + sxFmt(k, a) + '</td>' + (cr ? '<td class="num muted">'
+          + sxFmt(k, b) + '</td><td class="num">' + sxChg(k, a, b) + '</td>' : '');
+      }).join('');
+    }
+    var body = shown.map(function(r){
+      var nameCell;
+      if(X.dim === 'cust')
+        nameCell = '<button class="bk" data-sxcust="' + esc(r.k) + '">' + esc(r.n) + '</button>'
+          + (dirRow(r.k) ? ' <button class="bk sxgo" data-goacct="' + esc(r.k)
+             + '" title="Open the account page">\u2197</button>' : '');
+      else if(X.dim === 'cat') nameCell = esc(r.n);
+      else nameCell = '<button class="bk" data-sxf="' + X.dim + '" data-sxv="' + esc(r.k) + '">'
+        + esc(r.n) + '</button>';
+      return '<tr><td>' + nameCell + '</td>' + cells(r.cur || sxZero(), r.cmp) + '</tr>';
+    }).join('');
+    var tc = cr ? ctot : null;
+    if(useCats){
+      var allT = sxAgg(X.from, X.to, function(){ return ''; }, true)[''] || sxZero();
+      tot = allT;
+      tc = cr ? (sxAgg(cr[0], cr[1], function(){ return ''; }, true)[''] || sxZero()) : null;
+    }
+    body += '<tr class="sxtot"><td><b>Total</b></td>' + cells(tot, tc) + '</tr>';
+    document.getElementById('sx-table').innerHTML = '<table>' + '<tr>' + head + '</tr>'
+      + body + '</table>' + (rows.length > shown.length
+        ? '<p><button class="act" data-sxall>Show all ' + rows.length + ' rows</button></p>'
+        : '<p class="said">' + rows.length + ' rows' + (X.dim !== 'cat' && X.dim !== 'cust'
+          ? ' \u2014 click one to filter the page' : X.dim === 'cust'
+          ? ' \u2014 click a customer to filter the page to it' : '') + '.</p>');
+  }
+  (function(){
+    var sec = document.getElementById('sec-reporting');
+    if(!sec) return;
+    sec.addEventListener('click', function(ev){
+      var t = ev.target.closest('[data-sxm],[data-sxg],[data-sxdim],[data-sxsort],[data-sxall],'
+        + '[data-sxf],[data-sxcust],[data-sxclear]');
+      if(!t || ev.target.closest('[data-goacct]')) return;
+      if(t.hasAttribute('data-sxm')){
+        var k = t.getAttribute('data-sxm'), at = X.metrics.indexOf(k);
+        if(at >= 0){ if(X.metrics.length > 1) X.metrics.splice(at, 1); }
+        else X.metrics.push(k);
+        X.metrics.sort(function(a, b){
+          return SXM.map(function(m){ return m[0]; }).indexOf(a)
+            - SXM.map(function(m){ return m[0]; }).indexOf(b); });
+      } else if(t.hasAttribute('data-sxg')) X.grain = t.getAttribute('data-sxg');
+      else if(t.hasAttribute('data-sxdim')){
+        X.dim = t.getAttribute('data-sxdim'); X.sort = null; X.desc = true; X.all = false; }
+      else if(t.hasAttribute('data-sxsort')){
+        var s = t.getAttribute('data-sxsort');
+        if(X.sort === s || (!X.sort && s === X.metrics[0])) X.desc = !X.desc;
+        else { X.sort = s; X.desc = s !== 'name'; }
+      } else if(t.hasAttribute('data-sxall')) X.all = true;
+      else if(t.hasAttribute('data-sxf')){
+        var f = t.getAttribute('data-sxf'), v = t.getAttribute('data-sxv');
+        X[f] = X[f] === v ? '' : v;
+        if(f === 'tier' && v === '(none)') X.tier = '';
+      } else if(t.hasAttribute('data-sxcust')){
+        X.cust = t.getAttribute('data-sxcust');
+      } else if(t.hasAttribute('data-sxclear')) X[t.getAttribute('data-sxclear')] = '';
+      renderReport();
+    });
+    sec.addEventListener('change', function(ev){
+      var id = ev.target.id, v = ev.target.value;
+      if(id === 'sx-preset'){
+        if(v === 'custom'){ X.preset = 'custom'; }
+        else X.preset = v;
+      } else if(id === 'sx-cmp'){
+        if(v === 'custom' && X.cmp !== 'custom'){
+          var cr = sxCmpRange() || [X.from - (X.to - X.from + 1), X.from - 1];
+          X.cfrom = cr[0]; X.cto = cr[1]; }
+        X.cmp = v;
+      } else if(id === 'sx-rep') X.rep = v;
+      else if(id === 'sx-venue') X.venue = v;
+      else if(id === 'sx-tier') X.tier = v;
+      else if(id === 'sx-from' && v) X.from = sxFromIso(v);
+      else if(id === 'sx-to' && v) X.to = sxFromIso(v);
+      else if(id === 'sx-cfrom' && v) X.cfrom = sxFromIso(v);
+      else if(id === 'sx-cto' && v) X.cto = sxFromIso(v);
+      else return;
+      if(X.cto < X.cfrom) X.cto = X.cfrom;
+      renderReport();
+    });
+    sec.addEventListener('input', function(ev){
+      if(ev.target.id === 'sx-q'){ X.q = ev.target.value; renderReport(); }
+    });
+  })();
 
   function renderDir(){
     var host = document.getElementById('dirlist');
@@ -3161,6 +3770,7 @@ input[type="date"].act { cursor:text; }
     render('list-winback', DATA.winbackOrder);
     renderDir();
     renderSales();
+    renderReport();
     renderLeads();
     renderContacts();
     renderLeadRecs();
@@ -3211,7 +3821,11 @@ input[type="date"].act { cursor:text; }
       // sj() mirrors Python's _safe_json: JSON.stringify alone leaves "</"
       // intact, which would close this very <script> tag when re-embedded.
       var sj = function(o){ return JSON.stringify(o).replace(/<\//g, '<\\/'); };
+      // data first (the template holds __DATA__, not a second copy of it),
+      // then state, then the template itself - see build() in dashboard.py
       var doc = TEMPLATE
+        .replace('__DATA__', function(){
+          return document.getElementById('dash-data').textContent; })
         .replace('__STATE__', function(){ return sj(STATE); })
         .replace('__TEMPLATE__', function(){ return sj(TEMPLATE); });
       return art.publish(doc).then(function(){ say(code, 'Saved for everyone', ctx); },

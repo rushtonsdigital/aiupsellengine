@@ -279,14 +279,22 @@ def _money(value: str) -> float:
     return -v if neg else v
 
 
-def value_file_period(path: Path) -> tuple[date, date]:
-    """(start, end) from the export's filename; raises NotAMonthError unless the
-    range starts on the 1st and ends inside the same month."""
+def value_file_range(path: Path) -> tuple[date, date]:
+    """(start, end) of any GP-margin export, from its filename."""
     m = _VALUE_PERIOD.search(path.name)
     if not m:
         raise NotAMonthError(f"{path.name}: no _YYYY-MM-DD_YYYY-MM-DD date range in the name")
     start, end = _parse_date(m.group(1)), _parse_date(m.group(2))
-    if start.day != 1 or (end.year, end.month) != (start.year, start.month) or end < start:
+    if end < start:
+        raise NotAMonthError(f"{path.name}: end {end} is before start {start}")
+    return start, end
+
+
+def value_file_period(path: Path) -> tuple[date, date]:
+    """(start, end) from the export's filename; raises NotAMonthError unless the
+    range starts on the 1st and ends inside the same month."""
+    start, end = value_file_range(path)
+    if start.day != 1 or (end.year, end.month) != (start.year, start.month):
         raise NotAMonthError(f"{path.name}: {start}..{end} is not a single calendar "
                              f"month - export one month (or month to date) per file")
     return start, end
@@ -344,16 +352,127 @@ def ingest_values_file(conn, path: Path) -> int:
     return len(rows)
 
 
+def ingest_period_values_file(conn, path: Path) -> int:
+    """Load a GP-margin export of ANY date range into customer_period_values,
+    keyed by its exact range (replacing a previous load of the same range)."""
+    start, end = value_file_range(path)
+    t = db.customer_period_values
+    rows = read_value_rows(path)
+    conn.execute(t.delete().where((t.c.period_start == start) & (t.c.period_end == end)))
+    if rows:
+        now = db.now_utc()
+        conn.execute(t.insert(), [{**r, "period_start": start, "period_end": end,
+                                   "source_file": path.name, "ingested_at": now}
+                                  for r in rows])
+    log.info("%s: %d accounts, period %s..%s", path.name, len(rows), start, end)
+    return len(rows)
+
+
 def ingest_values_files(conn, paths) -> int:
-    """Load every GP-margin export given, oldest period first, skipping (with a
-    warning) any that isn't a single month - e.g. a Jan-Oct total."""
-    dated = []
+    """Load every GP-margin export given, oldest period first. Every file goes
+    into customer_period_values under its exact range (weeks, month to date,
+    last year's matching week - the sales report); a single month (or month to
+    date) ALSO feeds customer_month_values. A multi-month total only lands in
+    the period table, where nothing sums it with the months."""
+    month_files, other = [], []
     for p in map(Path, paths):
         try:
-            dated.append((value_file_period(p), p))
-        except NotAMonthError as exc:
-            log.warning("%s", exc)
-    return sum(ingest_values_file(conn, p) for _, p in sorted(dated))
+            month_files.append((value_file_period(p), p))
+        except NotAMonthError:
+            try:
+                other.append((value_file_range(p), p))
+            except NotAMonthError as exc:
+                log.warning("%s", exc)
+    n = sum(ingest_values_file(conn, p) for _, p in sorted(month_files))
+    for _, p in sorted(month_files) + sorted(other):
+        ingest_period_values_file(conn, p)
+    return n
+
+
+# --- daily £: Fresho operational report "Sales Line Items" (CSV) ---------------
+
+_LINE_ITEMS_RANGE = re.compile(r"_(\d{4}-\d{2}-\d{2})_to_(\d{4}-\d{2}-\d{2})\.csv$", re.I)
+LINE_ITEM_COLUMNS = ("Product Group", "Product Code", "Quantity", "Customer Code",
+                     "Delivery Date", "Order State", "Cost Price",
+                     "Discounted Line Total", "Rebate %")
+
+
+def line_items_range(path: Path) -> tuple[date, date]:
+    """`rushton_s_sales_line_items_2026-11-02_to_2026-11-08.csv` -> dates."""
+    m = _LINE_ITEMS_RANGE.search(path.name)
+    if not m:
+        raise ValueError(f"{path.name}: no _YYYY-MM-DD_to_YYYY-MM-DD range in the name")
+    return _parse_date(m.group(1)), _parse_date(m.group(2))
+
+
+def _num(value: str) -> float:
+    try:
+        return float((value or "").replace(",", "").strip() or 0)
+    except ValueError:
+        return 0.0
+
+
+def ingest_line_items_file(conn, path: Path) -> int:
+    """Load a "Sales Line Items" export as daily £ per customer x category into
+    sales_daily, replacing every day the file covers (idempotent). Only the
+    columns needed for £ and margin are read; addresses, notes and people's
+    names in the export never enter the database. Cancelled lines are skipped.
+    A product's category comes from its product group; the Z-code status
+    buckets (out of season, delisted) and blank groups use the product's real
+    category from the catalogue. An unmapped group fails loudly - add it to
+    categories.py deliberately."""
+    import categories
+
+    start, end = line_items_range(path)
+    known = {r.product_code: r.category for r in
+             conn.execute(sa.select(db.products.c.product_code, db.products.c.category))}
+    acc: dict[tuple, list] = {}
+    with open(path, newline="", encoding="utf-8-sig", errors="replace") as fh:
+        reader = csv.DictReader(fh)
+        missing = set(LINE_ITEM_COLUMNS) - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"{path.name}: not a Sales Line Items export, "
+                             f"missing {sorted(missing)}")
+        for raw in reader:
+            if (raw["Order State"] or "").strip().lower() == "cancelled":
+                continue
+            code = _clean_code(raw["Customer Code"])
+            day = _parse_date(raw["Delivery Date"])
+            if not code or not (start <= day <= end):
+                continue
+            group = (raw["Product Group"] or "").strip()
+            product = _clean_code(raw["Product Code"])
+            if group and categories.is_informative(group) \
+                    and group in categories.RAW_GROUP_TO_CATEGORY:
+                cat = categories.RAW_GROUP_TO_CATEGORY[group]
+            elif product in known and known[product]:
+                cat = known[product]
+            else:
+                cat = categories.to_category(group)   # raises on an unknown group
+            total = _num(raw["Discounted Line Total"])
+            a = acc.setdefault((code, day, cat), [0.0, 0.0, 0.0, 0])
+            a[0] += total
+            a[1] += _num(raw["Cost Price"]) * _num(raw["Quantity"])
+            a[2] += total * _num(raw["Rebate %"]) / 100.0
+            a[3] += 1
+    t = db.sales_daily
+    conn.execute(t.delete().where((t.c.sale_date >= start) & (t.c.sale_date <= end)))
+    rows = [{"customer_code": c, "sale_date": d, "category": k,
+             "net_sales": round(v[0], 2), "cost": round(v[1], 2),
+             "rebate": round(v[2], 2), "lines": v[3]}
+            for (c, d, k), v in acc.items()]
+    for i in range(0, len(rows), 5000):
+        conn.execute(t.insert(), rows[i:i + 5000])
+    log.info("%s: %d customer-day-category rows, %s..%s, £%.0f sales", path.name,
+             len(rows), start, end, sum(v[0] for v in acc.values()))
+    return len(rows)
+
+
+def ingest_line_items_files(conn, paths) -> int:
+    """Load several Sales Line Items exports, oldest range first (a later file
+    overlapping an earlier one wins for the days it covers)."""
+    dated = sorted((line_items_range(Path(p)), Path(p)) for p in paths)
+    return sum(ingest_line_items_file(conn, p) for _, p in dated)
 
 
 PRODUCT_LIST_AVAILABILITY_PREFIX = "availability"
@@ -411,6 +530,13 @@ if __name__ == "__main__":
     # python ingest.py values <file-or-folder>...  - load GP-margin exports
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    if len(sys.argv) >= 3 and sys.argv[1] == "lineitems":
+        files = []
+        for arg in map(Path, sys.argv[2:]):
+            files += sorted(arg.glob(config.LINE_ITEMS_FILE_GLOB)) if arg.is_dir() else [arg]
+        with db.init_db().begin() as conn:
+            print(f"loaded {ingest_line_items_files(conn, files)} rows from {len(files)} file(s)")
+        sys.exit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "productlist":
         with db.init_db().begin() as conn:
             print(ingest_product_list_file(conn, Path(sys.argv[2])))

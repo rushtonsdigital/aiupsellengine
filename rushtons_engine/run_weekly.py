@@ -84,6 +84,13 @@ def run(data_dir: Path, drafts_file: Path | None = None,
                 ingest.ingest_values_files(conn, value_files)
             else:
                 log.warning("no GP-margin export in %s - £ values not refreshed", data_dir)
+            # Daily £ by customer x category (the sales explorer).
+            line_files = sorted(data_dir.glob(config.LINE_ITEMS_FILE_GLOB))
+            if line_files:
+                ingest.ingest_line_items_files(conn, line_files)
+            else:
+                log.warning("no Sales Line Items export in %s - daily £ not refreshed",
+                            data_dir)
 
         # as_of anchors the whole run (cooldown window, seasonality, activity,
         # and the date stamped on the brief/tracker). Defaults to the latest

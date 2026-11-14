@@ -78,6 +78,11 @@ SILVER_PERCENTILE = 0.70   # next 50%; remainder bronze
 # loaded they fall back to lifetime order lines. Rule-excluded accounts are
 # left out of the percentile pool (classify.size_bands).
 VALUE_BAND_MONTHS = 3
+# Fresho holds £ data from this date (Rushton's moved onto it in Oct 2025): a
+# comparison period that starts earlier is partial and is flagged, not compared.
+VALUE_DATA_FROM = "2025-10-01"
+# Sales report (hidden #reporting section): weeks of trend shown, Mon-Sun.
+SALES_REPORT_TREND_WEEKS = 8
 # Hand ratings the team has confirmed, {customer_code: 'gold'|'silver'|'bronze'}.
 # They beat the computed band. (Hannah 2026-10-14: ratings were reviewed by
 # hand - output/tier_review_<date>.csv lists where they differ from the data.)
@@ -375,6 +380,9 @@ VALUES_FILE_GLOB = "*sales_gp_margin_*.csv"
 # Fresho Products > Export ("product list with level prices"), downloaded every
 # week. Only product_code + availability are read - never the price columns.
 PRODUCT_LIST_FILE_GLOB = "*product_list*.csv"
+# Fresho operational report, Report Type "Sales Line Items", CSV: every invoice
+# line with price and cost -> daily £ / gross profit (sales_daily, the explorer).
+LINE_ITEMS_FILE_GLOB = "*sales_line_items_*.csv"
 
 # --- live availability (2026-11-09) ----------------------------------------------
 # The monthly market report missed short supply (ceps, 2 Nov) and arrives after
