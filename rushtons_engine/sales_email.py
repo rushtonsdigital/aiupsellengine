@@ -100,8 +100,11 @@ def _tot(data: dict) -> dict:
             "deliveries": d, "accounts": acc, "avg_delivery": round(s / d) if d else None}
 
 
-def _pct(a, b):
-    if a is None or b in (None, 0):
+MIN_BASE = 1000   # no % change or GP % on less than this many pounds - it's noise
+
+
+def _pct(a, b, min_base=0):
+    if a is None or b in (None, 0) or abs(b) < min_base:
         return None
     return round(100.0 * (a - b) / abs(b), 1)
 
@@ -176,10 +179,11 @@ def build(sunday: date) -> dict:
             m, mp, ml = (cols["mtd"].get(k, [0, 0]), cols["prev_mtd"].get(k, [0, 0]),
                          cols["ly_mtd"].get(k, [0, 0]))
             out.append({"name": k, "week": round(w[0]), "week_gp_pct":
-                        round(100 * w[1] / w[0], 1) if w[0] else None,
-                        "week_vs_ly_pct": _pct(w[0], wl[0]), "mtd": round(m[0]),
-                        "mtd_vs_prev_pct": _pct(m[0], mp[0]), "mtd_vs_ly_pct": _pct(m[0], ml[0]),
-                        "mtd_gp_pct": round(100 * m[1] / m[0], 1) if m[0] else None})
+                        round(100 * w[1] / w[0], 1) if w[0] >= MIN_BASE else None,
+                        "week_vs_ly_pct": _pct(w[0], wl[0], MIN_BASE), "mtd": round(m[0]),
+                        "mtd_vs_prev_pct": _pct(m[0], mp[0], MIN_BASE),
+                        "mtd_vs_ly_pct": _pct(m[0], ml[0], MIN_BASE),
+                        "mtd_gp_pct": round(100 * m[1] / m[0], 1) if m[0] >= MIN_BASE else None})
         return sorted([r for r in out if r["week"] or r["mtd"]], key=lambda r: -r["mtd"])
 
     def info(k):
@@ -201,116 +205,117 @@ def _m(v):
     return ("−" if v < 0 else "") + "£" + f"{abs(round(v)):,}"
 
 
+# Gmail drops <style> blocks, so styling is inline - kept short (align attributes,
+# cellpadding, one border per cell) so a week's email stays ~20 KB.
+TABLE = ('<table cellpadding="5" cellspacing="0" style="border-collapse:collapse;'
+         'font-family:Arial,sans-serif;font-size:13px">')
+B1, B2 = f"border-bottom:1px solid {LINE}", f"border-bottom:2px solid {LINE}"
+
+
+def _th(x, left=False):
+    return (f'<th align="{"left" if left else "right"}" style="{B2};color:{MUTED};'
+            f'font-size:11px">{x}</th>')
+
+
+def _td(x, left=False):
+    return f'<td align="{"left" if left else "right"}" style="{B1}">{x}</td>'
+
+
 def _chg(p, good_up=True, pts=False):
     if p is None:
         return f'<span style="color:{MUTED}">—</span>'
     bad = p < 0 if good_up else p > 0
-    unit = " pts" if pts else "%"
-    return (f'<span style="color:{RED if bad else GREEN};font-weight:600">'
-            f'{"+" if p > 0 else ""}{p:.1f}{unit}</span>')
-
-
-TD = f'style="padding:6px 8px;border-bottom:1px solid {LINE};font-size:13px"'
-TDR = f'style="padding:6px 8px;border-bottom:1px solid {LINE};font-size:13px;text-align:right;white-space:nowrap"'
-TH = f'style="padding:6px 8px;border-bottom:2px solid {LINE};font-size:11px;color:{MUTED};text-align:left;font-weight:600"'
-THR = f'style="padding:6px 8px;border-bottom:2px solid {LINE};font-size:11px;color:{MUTED};text-align:right;font-weight:600"'
-
-
-def _h(text):
-    return (f'<h2 style="font-size:16px;color:{GREEN};margin:26px 0 6px;'
-            f'font-family:Arial,sans-serif">{html.escape(text)}</h2>')
+    return (f'<b style="color:{RED if bad else GREEN}">{"+" if p > 0 else ""}{p:.1f}'
+            f'{" pts" if pts else "%"}</b>')
 
 
 def _kpi_table(cur, a, b, la, lb):
-    rows = [("Net sales", "sales", True, "m"), ("Gross profit (cash margin)", "gp", True, "m"),
-            ("GP %", "gp_pct", True, "pct"), ("Deliveries", "deliveries", True, "n"),
-            ("Accounts buying", "accounts", True, "n"), ("Average delivery", "avg_delivery", True, "m")]
+    rows = [("Net sales", "sales", "m"), ("Gross profit (cash margin)", "gp", "m"),
+            ("GP %", "gp_pct", "pct"), ("Deliveries", "deliveries", "n"),
+            ("Accounts buying", "accounts", "n"), ("Average delivery", "avg_delivery", "m")]
     fmt = {"m": _m, "pct": lambda v: "—" if v is None else f"{v:.1f}%",
            "n": lambda v: "—" if v is None else f"{v:,}"}
     body = ""
-    for lbl, k, up, f in rows:
+    for lbl, k, f in rows:
         c, x, y = cur.get(k), a.get(k), b.get(k)
         if f == "pct":
-            ca = _chg(None if c is None or x is None else round(c - x, 1), up, True)
-            cb = _chg(None if c is None or y is None else round(c - y, 1), up, True)
+            ca = _chg(None if c is None or x is None else round(c - x, 1), True, True)
+            cb = _chg(None if c is None or y is None else round(c - y, 1), True, True)
         else:
-            ca, cb = _chg(_pct(c, x), up), _chg(_pct(c, y), up)
-        body += (f'<tr><td {TD}>{lbl}</td><td {TDR}><b>{fmt[f](c)}</b></td>'
-                 f'<td {TDR}>{fmt[f](x)}</td><td {TDR}>{ca}</td>'
-                 f'<td {TDR}>{fmt[f](y)}</td><td {TDR}>{cb}</td></tr>')
-    return (f'<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;'
-            f'max-width:720px;font-family:Arial,sans-serif"><tr><th {TH}></th><th {THR}>This period</th>'
-            f'<th {THR}>{html.escape(la)}</th><th {THR}>Change</th><th {THR}>{html.escape(lb)}</th>'
-            f'<th {THR}>Change</th></tr>{body}</table>')
+            ca, cb = _chg(_pct(c, x)), _chg(_pct(c, y))
+        body += ("<tr>" + _td(lbl, True) + _td(f"<b>{fmt[f](c)}</b>") + _td(fmt[f](x))
+                 + _td(ca) + _td(fmt[f](y)) + _td(cb) + "</tr>")
+    return (TABLE + "<tr>" + _th("", True) + _th("This period") + _th(html.escape(la))
+            + _th("Change") + _th(html.escape(lb)) + _th("Change") + "</tr>" + body + "</table>")
 
 
 def _movers(lst, title):
     if not lst:
-        return f'<p style="font-size:13px;color:{MUTED}">None.</p>'
+        return f'<p style="font-size:12px;color:{MUTED}">None.</p>'
     body = "".join(
-        f'<tr><td {TD}>{html.escape(m["name"])}</td><td {TD} style="color:{MUTED}">'
-        f'{html.escape(m["rep"].replace(" (Rushtons)", ""))}</td>'
-        f'<td {TDR}>{_m(m["week"])}</td><td {TDR}>{_m(m["prev_week"])}</td>'
-        f'<td {TDR}><b style="color:{GREEN if m["change"] > 0 else RED}">'
-        f'{"+" if m["change"] > 0 else "−"}{_m(abs(m["change"]))}</b>'
-        f'{" (" + m["status"] + ")" if m["status"] else ""}</td></tr>' for m in lst)
-    return (f'<p style="font-size:13px;font-weight:600;margin:10px 0 2px;font-family:Arial,sans-serif">'
-            f'{title}</p><table cellspacing="0" cellpadding="0" style="border-collapse:collapse;'
-            f'width:100%;max-width:720px;font-family:Arial,sans-serif"><tr><th {TH}>Customer</th>'
-            f'<th {TH}>Manager</th><th {THR}>This week</th><th {THR}>Last week</th>'
-            f'<th {THR}>Change</th></tr>{body}</table>')
+        "<tr>" + _td(html.escape(m["name"]), True)
+        + _td(f'<span style="color:{MUTED}">'
+              f'{html.escape(m["rep"].replace(" (Rushtons)", ""))}</span>', True)
+        + _td(_m(m["week"])) + _td(_m(m["prev_week"]))
+        + _td(f'<b style="color:{GREEN if m["change"] > 0 else RED}">'
+              f'{"+" if m["change"] > 0 else "−"}{_m(abs(m["change"]))}</b>'
+              f'{" (" + m["status"] + ")" if m["status"] else ""}') + "</tr>" for m in lst)
+    return (f'<p style="font-weight:bold;margin:10px 0 2px">{title}</p>' + TABLE + "<tr>"
+            + _th("Customer", True) + _th("Manager", True) + _th("This week")
+            + _th("Last week") + _th("Change") + "</tr>" + body + "</table>")
 
 
-def _split(rows, first_col, limit=None):
-    rows = rows[:limit] if limit else rows
+def _split(rows, first_col):
     body = "".join(
-        f'<tr><td {TD}>{html.escape(r["name"].replace(" (Rushtons)", ""))}</td>'
-        f'<td {TDR}>{_m(r["week"])}</td><td {TDR}>{_chg(r["week_vs_ly_pct"])}</td>'
-        f'<td {TDR}>{_m(r["mtd"])}</td><td {TDR}>{_chg(r["mtd_vs_prev_pct"])}</td>'
-        f'<td {TDR}>{_chg(r["mtd_vs_ly_pct"])}</td>'
-        f'<td {TDR}>{"—" if r["mtd_gp_pct"] is None else str(r["mtd_gp_pct"]) + "%"}</td></tr>'
+        "<tr>" + _td(html.escape(r["name"].replace(" (Rushtons)", "")), True)
+        + _td(_m(r["week"])) + _td(_chg(r["week_vs_ly_pct"])) + _td(_m(r["mtd"]))
+        + _td(_chg(r["mtd_vs_prev_pct"])) + _td(_chg(r["mtd_vs_ly_pct"]))
+        + _td("—" if r["mtd_gp_pct"] is None else f'{r["mtd_gp_pct"]}%') + "</tr>"
         for r in rows)
-    return (f'<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;'
-            f'max-width:720px;font-family:Arial,sans-serif"><tr><th {TH}>{first_col}</th>'
-            f'<th {THR}>Week</th><th {THR}>vs last year</th><th {THR}>Month to date</th>'
-            f'<th {THR}>vs last month</th><th {THR}>vs last year</th><th {THR}>GP % (MTD)</th>'
-            f'</tr>{body}</table>')
+    return (TABLE + "<tr>" + _th(first_col, True) + _th("Week") + _th("vs last year")
+            + _th("Month to date") + _th("vs last month") + _th("vs last year")
+            + _th("GP % (MTD)") + "</tr>" + body + "</table>")
+
+
+def _h(text):
+    return f'<h2 style="font-size:16px;color:{GREEN};margin:24px 0 6px">{text}</h2>'
+
+
+def _note(text):
+    return f'<p style="font-size:12px;color:{MUTED};margin:2px 0 6px">{text}</p>'
 
 
 def render(f: dict) -> str:
     p, t = f["periods"], f["totals"]
-    mtd_note = ""
     dd = (p["mtd"]["delivery_days"], p["prev_mtd"]["delivery_days"], p["ly_mtd"]["delivery_days"])
-    if len(set(dd)) > 1:
-        mtd_note = (f'<p style="font-size:12px;color:{MUTED};font-family:Arial,sans-serif">'
-                    f'Delivery days: {dd[0]} this month to date, {dd[1]} in the same dates last '
-                    f'month, {dd[2]} last year — the average delivery is the fairer read.</p>')
-    return f"""<div style="font-family:Arial,sans-serif;color:#141414;max-width:760px">
-<p style="font-size:14px">Hi all,</p>
-<p style="font-size:14px">Here is the sales update for the week of <b>{p["week"]["label"]}</b>.</p>
+    mtd_note = "" if len(set(dd)) == 1 else _note(
+        f'Delivery days: {dd[0]} this month to date, {dd[1]} in the same dates last month, '
+        f'{dd[2]} last year — the average delivery is the fairer read.')
+    return f"""<div style="font-family:Arial,sans-serif;color:#141414;font-size:14px;max-width:760px">
+<p>Hi all,</p>
+<p>Here is the sales update for the week of <b>{p["week"]["label"]}</b>.</p>
 {{{{SUMMARY}}}}
 {_h("The week at a glance")}
-<p style="font-size:12px;color:{MUTED}">{p["week"]["label"]} against the week before
-({p["prev_week"]["label"]}) and the same week last year ({p["ly_week"]["label"]}).</p>
+{_note(f'{p["week"]["label"]} against the week before ({p["prev_week"]["label"]}) and the same week last year ({p["ly_week"]["label"]}).')}
 {_kpi_table(t["week"], t["prev_week"], t["ly_week"], "Last week", "Same week last year")}
 {_h("Biggest movers this week")}
-<p style="font-size:12px;color:{MUTED}">Customers whose sales changed most against last week, in &#163;.</p>
+{_note("Customers whose sales changed most against last week, in &#163;.")}
 {_movers(f["movers_up"], "Up")}
 {_movers(f["movers_down"], "Down")}
 {_h("Month to date")}
-<p style="font-size:12px;color:{MUTED}">{p["mtd"]["label"]} against the same dates last month
-({p["prev_mtd"]["label"]}) and last year ({p["ly_mtd"]["label"]}).</p>
+{_note(f'{p["mtd"]["label"]} against the same dates last month ({p["prev_mtd"]["label"]}) and last year ({p["ly_mtd"]["label"]}).')}
 {_kpi_table(t["mtd"], t["prev_mtd"], t["ly_mtd"], "Same dates last month", "Same dates last year")}
 {mtd_note}
 {_h("By account manager")}
 {_split(f["by_manager"], "Account manager")}
 {_h("By category")}
 {_split(f["by_category"], "Category")}
-<p style="font-size:11px;color:{MUTED};margin-top:24px;line-height:1.5">Net sales are after
+<p style="font-size:11px;color:{MUTED};margin-top:22px;line-height:1.5">Net sales are after
 discounts and credits; gross profit (cash margin) is net sales minus cost of goods. Weeks run
 Monday to Sunday; "same week last year" is the matching Monday&#8211;Sunday 52 weeks earlier.
-Accounts are shown under their current account manager for every period. Source: Fresho
-invoice lines (reconciled with Fresho's Sales Totals and Gross Profit Margin report).</p>
+Accounts are shown under their current account manager for every period. % changes and margins
+are left out for amounts under &#163;{MIN_BASE:,}. Source: Fresho invoice lines (reconciled with
+Fresho's Sales Totals and Gross Profit Margin report).</p>
 </div>"""
 
 
