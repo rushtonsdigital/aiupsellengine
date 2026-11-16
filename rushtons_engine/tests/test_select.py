@@ -324,7 +324,9 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
              "C STJ2": {"customer_name": "St. James' Court Kona Kitchen"},
              "C DUKES": {"customer_name": "Dukes Hotel"},
              "EVENTS": {"venue_type": "Event catering"},
-             "CORPCAT": {"venue_type": "Corporate Catering"}}
+             "CORPCAT": {"venue_type": "Corporate Catering"},
+             # 2026-11-16: a caterer mis-typed as a cafe is parked by name
+             "MISTYPED": {"customer_name": "Albi Ison Catering", "venue_type": "Cafe"}}
     for code, vals in specs.items():
         add_customer(conn, code)
         if vals:
@@ -336,7 +338,7 @@ def test_selection_holds_2026_10_14(conn, monkeypatch):
     weekly_orders(conn, "NEWBIE", ["VEG-1"], AS_OF - dt.timedelta(days=13), weeks=2)
     codes = {r["customer_code"] for r in _classify_and_select(conn)}
     assert "OKAY" in codes
-    assert not codes & {"C STJCP", "C STJ2", "C DUKES", "EVENTS", "CORPCAT", "NEWBIE"}
+    assert not codes & {"C STJCP", "C STJ2", "C DUKES", "EVENTS", "CORPCAT", "MISTYPED", "NEWBIE"}
     prestige = {r.customer_code: r.prestige
                 for r in conn.execute(sa.select(db.customers))}
     assert prestige["C STJCP"] != "Excluded" and prestige["C DUKES"] != "Excluded"
