@@ -116,3 +116,10 @@ sources missed it. Ceps are now `out` for November; trompettes de-flagged (also 
 Fresho). Lesson: Fresho's own availability status (available / limited / unavailable / hidden,
 maintained by Jo) is the faster signal - never pitch a line Fresho shows as limited, and say so
 in `data_notes` if one reaches the pool.
+
+## 2026-11-10 — Laurence: hold all rhubarb until the English season
+
+*"Can we hold suggesting this until English Rhubarb and forced Rhubarb is in season (early next
+year)? At the moment we're getting it in from Netherlands... To do it earlier I think would be a bit
+bizarre to them."* → `rhubarb` set to `out` in `seasonal_2026-11.csv`; keep it out of December
+too. Re-introduce only when Yorkshire forced rhubarb is in (Jan/Feb), English outdoor from spring.

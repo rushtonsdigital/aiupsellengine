@@ -28,7 +28,7 @@ pattern,status,note,source
 ^pomegranates,peak,Italian - pomegranates,Oct market report carried forward
 ^chestnuts$,peak,European - chestnuts in shell,Oct market report carried forward
 ^quince$,peak,Quince,Nov market report (4 Nov) - Rest of Europe; Laurence 27 Oct boxes
-^rhubarb - indoor forced,peak,Pink indoor forced rhubarb,Nov market report (4 Nov) - Netherlands
+rhubarb,out,"All rhubarb held until the English / forced season (early 2027) - currently Dutch, chefs only order it in English season",Laurence 10 Nov email
 ^monks beard,peak,Italian - monks beard (agretti),Nov market report (4 Nov)
 ^swede$,peak,British - swede,Nov market report (4 Nov)
 ^cranberries \(fresh\),peak,Fresh cranberries,Nov market report (4 Nov) - Rest of the World

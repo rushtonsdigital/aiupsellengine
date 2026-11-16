@@ -134,6 +134,7 @@ def selection_holds(custs: dict, stats: dict, as_of: date) -> set[str]:
         name = (c.customer_name or "").strip().casefold()
         rep = (c.sales_rep or "").strip().casefold()
         if (c.venue_type in config.PARKED_VENUE_TYPES
+                or re.search(config.PARKED_NAME_PATTERN, name)
                 or any(re.match(p, name) for p in config.NO_SAMPLE_BOX_NAME_PATTERNS)
                 or (config.SELECTION_SALES_REPS and rep not in config.SELECTION_SALES_REPS)
                 or (c.account_stage or "").strip().casefold() in config.HOLD_ACCOUNT_STAGES):
