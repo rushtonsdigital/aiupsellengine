@@ -254,8 +254,8 @@ the drafts and re-apply.
      no speculation about causes, no customer contact details. Save as
      `output/sales_update_<Sunday>_with_summary.html`.
   3. **Draft (don't send)** it in Gmail as an HTML email, subject "Rushton's sales update – week
-     of <week label>", to whoever Jose names (first time: ask — the 11 Nov call mentioned Hannah
-     and Lucy; Harry's 11 Nov email brought in Colin, the management accountant). Sending is Jose's call — never send without an explicit yes. Also SendUserFile the
+     of <week label>", to **Hannah only** (hannah@rushtonsgreengrocer.co.uk) — Jose, 16 Nov:
+     "only hannah from now". Don't add Lucie, Harry or Colin unless Jose says so. Leave it as a draft — Jose sends it (16 Nov: "everything in draft"). Also SendUserFile the
      preview to Jose.
 - **Memory**: update `rushtons-mvp-completion` / `rushtons-deployment-ops-state` with the run
   date, data dates, rule changes and open items.
