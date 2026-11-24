@@ -238,7 +238,7 @@ the drafts and re-apply.
 - **Draft (don't send) the weekly email** in Gmail to Hannah + Laurence, cc Harry, subject
   "AI Upsell – week of <date> (15 accounts)": what changed from their feedback, notes on this
   week's list (from `data_notes`/`customer_review`), the open asks per person, and a reminder
-  to fill the tracker columns. Say in the report that the tracker must be attached by hand.
+  to fill the tracker columns. Attach the tracker to the draft in the same create_draft call (file reference `sha256:<hash>:<absolute path>`); update_draft cannot add files, so if one was missed make a new draft and delete the old one.
   Sending is Jose's call — never send without an explicit yes.
 - **Weekly sales update email (since 16 Nov 2026)** — a separate email from the upsell one,
   asked for by the client (week summary, biggest movers, month to date vs last month and last
@@ -254,8 +254,8 @@ the drafts and re-apply.
      no speculation about causes, no customer contact details. Save as
      `output/sales_update_<Sunday>_with_summary.html`.
   3. **Draft (don't send)** it in Gmail as an HTML email, subject "Rushton's sales update – week
-     of <week label>", to whoever Jose names (first time: ask — the 11 Nov call mentioned Hannah
-     and Lucy; Harry's 11 Nov email brought in Colin, the management accountant). Sending is Jose's call — never send without an explicit yes. Also SendUserFile the
+     of <week label>", to **Hannah only** (hannah@rushtonsgreengrocer.co.uk) — Jose, 16 Nov:
+     "only hannah from now". Don't add Lucie, Harry or Colin unless Jose says so. Leave it as a draft — Jose sends it (16 Nov: "everything in draft"). Also SendUserFile the
      preview to Jose.
 - **Memory**: update `rushtons-mvp-completion` / `rushtons-deployment-ops-state` with the run
   date, data dates, rule changes and open items.

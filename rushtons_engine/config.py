@@ -225,6 +225,11 @@ HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)",
 # "a lot of the Caterers are going through projects so we can't really have
 # much input on what they are buying"; Jose confirmed "all caterers".
 PARKED_VENUE_TYPES = {"Event catering", "Corporate Catering"}
+# 2026-11-16 reviewer pass: Fresho venue types are unreliable for caterers -
+# "Albi Ison Catering" (an NW10 production kitchen supplying an events venue)
+# was typed "Cafe" and reached the 16 Nov list. Any account whose NAME says
+# catering/caterer is parked the same way, whatever its venue type.
+PARKED_NAME_PATTERN = r"\bcater(ing|er|ers)\b"
 # Only these account managers' books go into the weekly pull (casefolded Fresho
 # sales_rep; empty = everyone). Hannah, 2026-10-28 call: Harry's uplift on his
 # own accounts counts towards his target, and "if we change it just for now to

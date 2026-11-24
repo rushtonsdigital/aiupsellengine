@@ -130,3 +130,14 @@ current Option B shape works; lean further toward Laurence's own wording above.
 
 **New in season (from 9 Nov):** fallback accounts already buy every category. Never "you haven't
 tried our X range" - pitch what's new this season for a kitchen that already knows Rushton's.
+
+## 2026-11-10 — Laurence: "new in season" Option B should say so (9 Nov sends)
+
+All 12 sent were Option B. On the new-in-season (fallback) accounts Laurence asked that **Option B
+says the items are new in season and that they haven't had them from us yet**. His rewrite for
+Tatar Bunar (sent): *"Hi Luca, a few new bits in season you've not had from us yet – pomegranates,
+kohlarabi & fresh cranberries. Can we send you over a sample box?"*
+- Shape for every `fallback_seasonal` account: "a few new bits in season you've not had from us
+  yet – X, Y & Z. Can we send you over a sample box?"
+- Still never "you haven't tried our X range" for category gaps — this is product-level
+  ("not had from us yet"), and only for the new-in-season pitch.
