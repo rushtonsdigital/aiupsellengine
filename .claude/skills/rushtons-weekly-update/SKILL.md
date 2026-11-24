@@ -95,6 +95,17 @@ buyer side — switch to Rushton's). Files land in `C:\Users\goodb\Downloads`.
   page scrolls when the date fields take focus, so fixed coordinates miss. Click Export →
   "Download Report" → Close.
 - File: `rushtons-greengrocers_sales_gp_margin_<start>_<end>.csv`.
+- **Daily £ for the sales explorer (since 11 Nov 2026):** on the Operational Report at the
+  top of the Reports page, Report Type **Sales Line Items**, Format CSV, Start = the first
+  date printed by `rushtons_engine\.venv\Scripts\python.exe rushtons_engine\sales_explorer.py
+  missing <Sunday before the run>`, End = that Sunday (usually exactly last Mon–Sun). Generate,
+  wait for "Done.", click `rushton_s_sales_line_items_<start>_to_<end>.csv`. **One week at most
+  per file** - a whole month errors in Fresho. The form lives in an iframe; setting values by
+  JS needs the iframe window's native value setters + input/change events. The file holds cost
+  prices, addresses and staff names: keep it in the scratch run folder only, never the repo
+  (the loader reads only £, cost, qty, product group, customer, date). Re-run `missing` after
+  loading: it must print nothing. If Chrome blocks the downloads, ask the user to allow
+  multiple downloads for app.fresho.com.
 
 **d. Product list - EVERY week (live availability)** — Fresho → Products → *Product Pricing &
 Availability* tab → **Export/Import ▾ → Export CSV** (never Import) → wait for "Done." → click the
@@ -229,6 +240,23 @@ the drafts and re-apply.
   week's list (from `data_notes`/`customer_review`), the open asks per person, and a reminder
   to fill the tracker columns. Say in the report that the tracker must be attached by hand.
   Sending is Jose's call — never send without an explicit yes.
+- **Weekly sales update email (since 16 Nov 2026)** — a separate email from the upsell one,
+  asked for by the client (week summary, biggest movers, month to date vs last month and last
+  year). Needs the Sales Line Items export loaded through the Sunday (step 2; `sales_explorer.py
+  missing <Sunday>` must print nothing). Then:
+  1. `rushtons_engine\.venv\Scripts\python.exe rushtons_engine\sales_email.py <Sunday>` ->
+     `output/sales_update_<Sunday>.html` (body, with a `{{SUMMARY}}` slot) and `.json` (facts).
+  2. **Claude writes the summary** into `{{SUMMARY}}`: 4–5 short bullets (`<ul>`), using ONLY
+     numbers in the `.json` (recompute any % you quote from it): the week vs last week and last
+     year (sales, gross profit, GP%, deliveries/average delivery), month to date vs last month and
+     last year (call out a delivery-day difference and give the per-delivery-day comparison), the
+     two biggest movers each way (name the stopped ones), and one category line. Plain UK English,
+     no speculation about causes, no customer contact details. Save as
+     `output/sales_update_<Sunday>_with_summary.html`.
+  3. **Draft (don't send)** it in Gmail as an HTML email, subject "Rushton's sales update – week
+     of <week label>", to whoever Jose names (first time: ask — the 11 Nov call mentioned Hannah
+     and Lucy; Harry's 11 Nov email brought in Colin, the management accountant). Sending is Jose's call — never send without an explicit yes. Also SendUserFile the
+     preview to Jose.
 - **Memory**: update `rushtons-mvp-completion` / `rushtons-deployment-ops-state` with the run
   date, data dates, rule changes and open items.
 - **Commit** config/test/skill changes on a branch, PR, merge after tests pass.

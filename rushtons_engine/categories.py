@@ -35,8 +35,21 @@ RAW_GROUP_TO_CATEGORY = {
     "S100. Herbs - SPLIT": "Herbs",
     "B110. Micros, Leaves & Flowers - BULK": "Micros, Leaves & Flowers",
     "S110. Micros, Leaves & Flowers - SPLIT": "Micros, Leaves & Flowers",
+    "B120. Foraged - BULK": "Foraged",                # seen in Sales Line Items, 2026-11
     "S120. Foraged - SPLIT": "Foraged",
     "B130. Dry Stores & Non Food - BULK": "Dry Stores & Non Food",
+    # Older group names from Rushton's first weeks on Fresho (Sep-Nov 2025), seen in
+    # the Sales Line Items backfill (2026-11-11). Same categories, renamed since.
+    "S130. Dry Stores & Non Food - SPLIT": "Dry Stores & Non Food",
+    "S150. Frozen Produce - SPLIT": "Frozen Produce",
+    "B150. Frozen Produce": "Frozen Produce",
+    "B150. Frozen Produce - BULK": "Frozen Produce",
+    "S160. Dairy and Chilled - SPLIT": "Dairy and Chilled",
+    "B160. Dairy and Chilled": "Dairy and Chilled",
+    "B160. Dairy and Chilled - BULK": "Dairy and Chilled",
+    # Products hidden from the price list (5 lines in a year) - a visibility bucket,
+    # not a produce category.
+    "S550. Not to Show on Price List": "Miscellaneous",
     "S130. Dry Stores & Non Food - SPLITs": "Dry Stores & Non Food",  # sic
     "S140. Prep Fruit & Juices": "Prep Fruit & Juices",
     "S145. Prep Vegetables": "Prep Vegetables",

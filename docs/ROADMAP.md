@@ -66,6 +66,14 @@ re-import it. Dashboard republished with the leads CRM (lead pages, funnel, Foll
 6. **Year-on-year and financial year views** — Oct 2025 vs Oct 2026 from November; FY Nov–Oct
    totals; a sustained-£-decline alert (Hannah: River Cafe's dip is "the typical sign of when
    they're going to go").
+   *Built 11 Nov (PR on `feat/sales-reporting`):* hidden **Sales explorer** on the dashboard
+   (`#reporting`, not in the menu) — Google-Analytics-style: date range + comparison drive
+   everything, metric cards toggle on/off, split by account manager / customer / category /
+   venue / tier. Daily £ and cost from Fresho's "Sales Line Items" export (`sales_daily`, back to
+   29 Sep 2025) — also delivers #5 (margin by category). Asked for by Hannah (9 Nov) and Jose
+   (GA-like, 11 Nov); promised for Monday 16 Nov. Open with the team: Harry/Colin's KPI list
+   (price list, invoice report, customer list, product totals); AMs are "as is"; net profit
+   needs overheads not in Fresho; the Monday email version (AI commentary, human-checked) is next.
 7. **Leads connected properly** (Hannah's ask on 19 Oct) — £ of converted leads, an
    "Add prospect" form (needs #1), lead → customer conversion tracking.
    *Done 25 Oct:* the website forms post straight into Supabase (`lead-intake` Edge

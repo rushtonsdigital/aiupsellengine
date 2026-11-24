@@ -20,10 +20,15 @@ reporting views, run it safely, and answer.
    Profit Margin" report, loaded one calendar month per file into `customer_month_values`
    (net_sales, gross_profit, cogs, credits — from Jan 2026) and summarised per account in
    `customer_value_metrics` (sales_12m, gp_pct_12m, sales_last_month, sales_prev3_avg,
-   trend_pct, sales_mtd, aov_last_month). There is **no £ by product or category** — that
-   report has no product split. Everything order-based (orders, lines, `quantity`, every `v_*`
-   view) is still *volume*. For "what did X spend / GP%", use the value tables; for "which
-   categories make the money", say it isn't available yet.
+   trend_pct, sales_mtd, aov_last_month). Since Nov 2026 **`sales_daily`** holds £ per customer x
+   day x category (net_sales, cost, rebate, lines) from Fresho's "Sales Line Items" export, from
+   29 Sep 2025 — use it for any date range, week-on-week, and **margin by category**
+   (gross profit = net_sales - cost); it reconciles to the GP-margin report. (`customer_period_values`
+   holds that report for exact ranges - filter on the exact dates, never sum overlaps.) Per
+   PRODUCT £ is not stored (only per category), and the GP-margin report itself has no
+   product split. Everything order-based (orders, lines, `quantity`, every `v_*` view) is still
+   *volume*. For "what did X spend / GP%", use the value tables; for "which categories make the
+   money", use `sales_daily` (from 29 Sep 2025 only).
 2. **Never sum `quantity` across products.** `qty_type` is mixed (Each / kg / box), so a single
    summed `total_qty` is meaningless. Only ever use quantity **per product** (or grouped by
    `qty_type`). For "how much did they buy", prefer **distinct orders** or **line counts**.
