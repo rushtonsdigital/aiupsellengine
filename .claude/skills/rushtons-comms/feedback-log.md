@@ -141,3 +141,23 @@ kohlarabi & fresh cranberries. Can we send you over a sample box?"*
   yet – X, Y & Z. Can we send you over a sample box?"
 - Still never "you haven't tried our X range" for category gaps — this is product-level
   ("not had from us yet"), and only for the new-in-season pitch.
+
+## 2026-11-19/20 — Option B is the only one being used (8 weeks running)
+
+Laurence, 19 Nov: *"I have sent out "simple announcement" messages to 10 of the 13 suggested
+customers… So far of the 10 I've messaged, 4 have replied saying Yes."* Every one of the 10 is
+marked `Option Sent = B` in the returned tracker. Across 2 Nov (8/8 B), 9 Nov (12/12 B) and
+16 Nov (10/10 B), **Option A has never once been sent**.
+
+What changes: **write Option B as the message and Option A as the alternate.** B carries the week —
+it must be the one that is right on its own, in Laurence's own wording (see the 2 Nov and
+9 Nov entries above). A stays a genuine second option with a dish idea for whoever wants it, but it
+is no longer a coin-toss between two equals: do not spend the care on A that B needs.
+
+Results that week: 3 explicit yeses in the tracker (Bar Blondie, Trattoria Brutto, 51 Cave a
+Manger), Laurence counts 4; 4 boxes sent (those three plus Sessions Arts Club, where he was
+visiting on the Friday). Bar Blondie came back asking for **winter tomatoes** on top of the box —
+a customer-pulled line, worth noticing as a sign the simple list invites additions.
+
+Hannah, 20 Nov: *"Getting messages out to 10 customers and 4 yeses already is a brilliant result,
+again!"*
