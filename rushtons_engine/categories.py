@@ -38,6 +38,9 @@ RAW_GROUP_TO_CATEGORY = {
     "B120. Foraged - BULK": "Foraged",                # seen in Sales Line Items, 2026-11
     "S120. Foraged - SPLIT": "Foraged",
     "B130. Dry Stores & Non Food - BULK": "Dry Stores & Non Food",
+    # New in the 2026-11-24 orders export: a storage-location variant of B130
+    # ("Upstairs"), not a new produce type. Same category.
+    "B130. Dry Stores & Non Food - BULK Upstairs": "Dry Stores & Non Food",
     # Older group names from Rushton's first weeks on Fresho (Sep-Nov 2025), seen in
     # the Sales Line Items backfill (2026-11-11). Same categories, renamed since.
     "S130. Dry Stores & Non Food - SPLIT": "Dry Stores & Non Food",

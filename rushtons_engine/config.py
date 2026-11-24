@@ -216,7 +216,15 @@ HOLD_CUSTOMER_CODES = {"C DUKES": "closed for refurbishment (2026-10-14)",
                        "C CADOGAN": "chefs left, needs a site visit first (2026-10-27)",
                        # 2026-11-02 reviewer pass: charity community centre café,
                        # budget-led and partly on donated surplus - not a box fit.
-                       "R STLUKESP": "charity community café, budget-led (2026-11-02)"}
+                       "R STLUKESP": "charity community café, budget-led (2026-11-02)",
+                       # 2026-11-24 reviewer pass. Laurence, 19 Nov, on Bistrotheque:
+                       # "Bistroteque's menu is designed by a development kitchen who
+                       # will order what they need well in advance of the season. I'm
+                       # chatting to the chef there quite a lot and will find out if a
+                       # sample box would be useful for him." R BISTRODEV *is* that
+                       # development kitchen - a WhatsApp box pitch would cut across
+                       # his live conversation. Release when Laurence says so.
+                       "R BISTRODEV": "development kitchen; Laurence is talking to the chef himself (2026-11-19)"}
 # Venue types parked for sample boxes. Event caterers order to their client's
 # brief, so a sample box rarely lands — "let's park that segment for now and
 # revisit" (Hannah, re Zara Goalen). Also covers Schmaltz Production.

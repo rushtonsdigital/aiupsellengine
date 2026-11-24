@@ -123,3 +123,24 @@ in `data_notes` if one reaches the pool.
 year)? At the moment we're getting it in from Netherlands... To do it earlier I think would be a bit
 bizarre to them."* → `rhubarb` set to `out` in `seasonal_2026-11.csv`; keep it out of December
 too. Re-introduce only when Yorkshire forced rhubarb is in (Jan/Feb), English outdoor from spring.
+
+## 2026-11-19 — Laurence: read the pack size before you box a line (Abate pears)
+
+*"Something to note, for one of the customers Abate pears were suggested. Not such a good idea as
+we they only come in 4.5kg boxes."* The account was Sessions Arts Club, where
+`Pears - Abate (3413-CS-4.5)` sat in *Additional Products (box only)*.
+
+The pack format is already in the product code and must be read before picking:
+- `NNNN-EA` = each, `NNNN-KG` = loose by weight — both fine for a sample box.
+- `NNNN-CS-<n>` = case only. **The `<n>` is not always kilos** — `3413-CS-4.5` is a 4.5kg case of
+  pears, but `3205-CS-55` is 55 limes and `6111-CS-60` is 60 croissants. Read it against the
+  product: a count of small items is fine, a case that is kilos of one large fruit or vegetable is
+  not a taster.
+- So: **never put a case-only line in a sample box when the case is a bulk weight of a single
+  item** and no `-EA` / `-KG` variant of that product exists. If the kitchen would have to commit
+  to 4.5kg to try it, it is a reorder line, not a sample.
+- This applies to the box-only picks too, not just the ones the message names — Laurence reads the
+  whole tracker row.
+
+No config rule for this: the `<n>` has no consistent unit, so a numeric threshold would strip good
+lines (55 limes, 60 croissants) and miss bad ones. It is a picking judgement, made here.
